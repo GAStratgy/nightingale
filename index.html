@@ -440,6 +440,7 @@ body {
 
 .data-tbl {
   width: 100%;
+  min-width: 580px;
   border-collapse: collapse;
   background: var(--white);
   border: 1px solid var(--border);
@@ -1694,6 +1695,7 @@ if (typeof ChartDataLabels !== 'undefined') {
 // ── Overview charts (build immediately, not lazy) ─────────
 document.addEventListener('DOMContentLoaded', () => {
   Chart.defaults.font.family = "-apple-system,'Helvetica Neue',Arial,sans-serif";
+  const isMobileOv = window.innerWidth <= 600;
 
   // Overview: Qualification finish rates by cutoff
   new Chart(document.getElementById('ovQualTierChart'), {
@@ -1708,17 +1710,16 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: 20 } },
+      layout: { padding: { top: isMobileOv ? 4 : 20 } },
       plugins: {
         legend: { labels: { color: '#888890', font: { size: 10 }, boxWidth: 14 } },
         datalabels: {
-          display: ctx => ctx.dataset.data[ctx.dataIndex] > 0,
-          color: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? '#374151' : '#fff',
-          font: { size: 9, weight: 'bold' },
+          display: ctx => ctx.dataset.data[ctx.dataIndex] >= (isMobileOv ? 20 : 1),
+          color: '#fff',
+          font: { size: isMobileOv ? 8 : 9, weight: 'bold' },
           formatter: v => v + '%',
-          anchor: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'end' : 'center',
-          align: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'top' : 'center',
-          offset: 2, clamp: false
+          anchor: 'center', align: 'center',
+          clamp: true
         }
       },
       scales: {
@@ -1741,18 +1742,16 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: 20 } },
+      layout: { padding: { top: isMobileOv ? 4 : 20 } },
       plugins: {
         legend: { labels: { color: '#888890', font: { size: 10 }, boxWidth: 14 } },
         datalabels: {
-          display: ctx => ctx.dataset.data[ctx.dataIndex] > 0,
-          color: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? '#374151' : '#fff',
-          font: { size: 9, weight: 'bold' },
+          display: ctx => ctx.dataset.data[ctx.dataIndex] >= (isMobileOv ? 20 : 1),
+          color: '#fff',
+          font: { size: isMobileOv ? 8 : 9, weight: 'bold' },
           formatter: v => v + '%',
-          anchor: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'end' : 'center',
-          align: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'top' : 'center',
-          offset: 2,
-          clamp: false
+          anchor: 'center', align: 'center',
+          clamp: true
         }
       },
       scales: {
@@ -1950,6 +1949,7 @@ const noDL = { datalabels: { display: false } };
 function buildCharts() {
   window.chartsBuilt = true;
   Chart.defaults.font.family = "-apple-system,'Helvetica Neue',Arial,sans-serif";
+  const isMobile = window.innerWidth <= 600;
 
   // ── World Cup Standing Rank (FIS official, 5 seasons) ─────
   const wcYears = ['2021–22', '2022–23', '2023–24', '2024–25', '2025–26'];
@@ -2037,14 +2037,15 @@ function buildCharts() {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: 36 } },
+      layout: { padding: { top: isMobile ? 20 : 36 } },
       plugins: {
         legend: { display: false },
         datalabels: {
-          display: true,
+          display: isMobile ? ctx => ctx.dataset.data[ctx.dataIndex] > 0 : true,
           color: C_TEXT,
-          font: { size: 10, weight: 'bold' },
+          font: { size: isMobile ? 9 : 10, weight: 'bold' },
           formatter: (v, ctx) => {
+            if (isMobile) return v + ' pts';
             const pct = [null, null, null, '+134% vs 2023–24', '+169% vs 2023–24'];
             const p = pct[ctx.dataIndex];
             return p ? v + ' pts\n' + p : v + ' pts';
@@ -2088,11 +2089,12 @@ function buildCharts() {
       plugins: {
         legend: { labels: { color: C_TEXT, font: { size: 11 }, boxWidth: 14 } },
         datalabels: {
-          display: true,
-          color: ctx => ctx.datasetIndex === 0 ? '#fff' : C_TEXT,
-          font: { size: 10, weight: 'bold' },
+          display: ctx => ctx.dataset.data[ctx.dataIndex] != null,
+          color: '#fff',
+          font: { size: isMobile ? 8 : 10, weight: 'bold' },
           formatter: v => v + 'th',
-          anchor: 'center', align: 'center'
+          anchor: 'center', align: 'center',
+          clamp: true
         },
         tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw}th` } }
       },
@@ -2121,21 +2123,16 @@ function buildCharts() {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: 22 } },
+      layout: { padding: { top: isMobile ? 4 : 22 } },
       plugins: {
         legend: { labels: { color: C_TEXT, font: { size: 11 }, boxWidth: 16 } },
         datalabels: {
-          display: ctx => ctx.dataset.data[ctx.dataIndex] > 0,
-          color: ctx => {
-            const v = ctx.dataset.data[ctx.dataIndex];
-            return v < 18 ? '#374151' : '#fff';
-          },
-          font: { size: 10, weight: 'bold' },
+          display: ctx => ctx.dataset.data[ctx.dataIndex] >= (isMobile ? 20 : 1),
+          color: '#fff',
+          font: { size: isMobile ? 8 : 10, weight: 'bold' },
           formatter: v => v + '%',
-          anchor: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'end' : 'center',
-          align: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'top' : 'center',
-          offset: 2,
-          clamp: false
+          anchor: 'center', align: 'center',
+          clamp: true
         }
       },
       scales: {
@@ -2158,21 +2155,16 @@ function buildCharts() {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: 22 } },
+      layout: { padding: { top: isMobile ? 4 : 22 } },
       plugins: {
         legend: { labels: { color: C_TEXT, font: { size: 11 }, boxWidth: 16 } },
         datalabels: {
-          display: ctx => ctx.dataset.data[ctx.dataIndex] > 0,
-          color: ctx => {
-            const v = ctx.dataset.data[ctx.dataIndex];
-            return v < 18 ? '#374151' : '#fff';
-          },
-          font: { size: 10, weight: 'bold' },
+          display: ctx => ctx.dataset.data[ctx.dataIndex] >= (isMobile ? 20 : 1),
+          color: '#fff',
+          font: { size: isMobile ? 8 : 10, weight: 'bold' },
           formatter: v => v + '%',
-          anchor: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'end' : 'center',
-          align: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'top' : 'center',
-          offset: 2,
-          clamp: false
+          anchor: 'center', align: 'center',
+          clamp: true
         }
       },
       scales: {
@@ -2314,10 +2306,11 @@ function buildCharts() {
         datalabels: {
           display: ctx => ctx.dataset.data[ctx.dataIndex] != null,
           color: '#fff',
-          font: { size: 11, weight: 'bold' },
+          font: { size: isMobile ? 9 : 11, weight: 'bold' },
           formatter: v => v + 'th',
           anchor: 'center',
-          align: 'center'
+          align: 'center',
+          clamp: true
         }
       },
       scales: {
@@ -2378,13 +2371,13 @@ function buildCharts() {
         },
         datalabels: {
           display: ctx => ctx.dataset.data[ctx.dataIndex] != null,
-          color: C_TEXT,
-          font: { size: 10, weight: 'bold' },
+          color: isMobile ? '#fff' : C_TEXT,
+          font: { size: isMobile ? 8 : 10, weight: 'bold' },
           formatter: v => toPos(v) + 'th',
-          anchor: 'end',
-          align: 'right',
-          offset: 4,
-          clamp: false
+          anchor: isMobile ? 'center' : 'end',
+          align: isMobile ? 'center' : 'right',
+          offset: isMobile ? 0 : 4,
+          clamp: true
         }
       },
       scales: {
@@ -2396,7 +2389,7 @@ function buildCharts() {
         },
         y: { ticks: { color: C_TEXT, font: { size: 10 } }, grid: { display: false } }
       },
-      layout: { padding: { right: 36 } }
+      layout: { padding: { right: isMobile ? 4 : 36 } }
     }
   });
 
