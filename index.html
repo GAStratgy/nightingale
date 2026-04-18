@@ -14,6 +14,7 @@ function sbxUnlock() {
     gate.style.transition = 'opacity .3s';
     gate.style.opacity = '0';
     document.body.style.overflow = '';
+    window.scrollTo(0, 0);
     setTimeout(function() { gate.style.display = 'none'; }, 320);
   } else {
     err.style.display = 'block';
