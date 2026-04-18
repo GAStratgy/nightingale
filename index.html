@@ -1807,8 +1807,45 @@ async function printAll() {
   const chrome = document.querySelectorAll('.nav,.hint-bar,.hdr,.ftr,.subnav');
   chrome.forEach(el => el.style.display = 'none');
 
-  // ── PDF layout prep: force desktop stacking & uniform chart heights ──
-  // html2canvas does NOT apply @media print rules, so we do it manually.
+  // ── PDF layout prep: neutralise ALL mobile breakpoints ──
+  // windowWidth:1400 only affects html2canvas render size, NOT which CSS media
+  // queries are active. On a real 390px phone screen the mobile rules stay live.
+  // We inject a high-priority style block to reset every mobile override.
+  const pdfStyle = document.createElement('style');
+  pdfStyle.id = 'pdf-override';
+  pdfStyle.textContent = `
+    /* Season arc — 3-column desktop grid */
+    .arc-wrap { grid-template-columns: 1fr 14px 1fr 14px 1fr !important; gap: 8px !important; }
+    .arc-wrap .arc-col:last-child { grid-column: auto !important; }
+    .arc-arrow { display: block !important; font-size: 14px !important; padding-top: 24px !important; }
+    /* Hero KPIs */
+    .hero-grid { grid-template-columns: repeat(4,1fr) !important; gap: 16px !important; }
+    .hero-val  { font-size: 42px !important; }
+    .hero-stat { padding: 16px 20px !important; }
+    /* BVN / findings / cid grids */
+    .bvn-grid      { grid-template-columns: repeat(4,1fr) !important; }
+    .findings-grid { grid-template-columns: repeat(4,1fr) !important; }
+    .cid-grid      { grid-template-columns: repeat(4,1fr) !important; }
+    /* Team cards */
+    .team-cards { grid-template-columns: repeat(3,1fr) !important; }
+    /* Tables — show all columns, normal sizing */
+    .data-tbl  { min-width: 0 !important; font-size: 12px !important; width: 100% !important; }
+    .data-tbl th, .data-tbl td { padding: 10px 16px !important; font-size: 12px !important; }
+    .data-tbl th:last-child, .data-tbl td:last-child { display: table-cell !important; }
+    .shift-tbl { font-size: 11px !important; }
+    .shift-tbl td.meaning { display: table-cell !important; }
+    /* Header & nav */
+    .hdr { padding: 20px 36px !important; flex-wrap: nowrap !important; }
+    .nav { overflow: visible !important; white-space: normal !important; padding: 0 20px !important; }
+    /* Olympic banner */
+    .oly { flex-direction: row !important; gap: 16px !important; }
+    .oly-num { margin-left: auto !important; }
+    /* Misc mobile overrides */
+    .hint-bar { font-size: 12px !important; padding: 8px 20px !important; }
+  `;
+  document.head.appendChild(pdfStyle);
+
+  // Stack two-col sections vertically so charts don't clip at page breaks
   const twoColEls = document.querySelectorAll('.two-col');
   twoColEls.forEach(el => { el.style.display = 'block'; });
 
@@ -1857,6 +1894,9 @@ async function printAll() {
     hiddenPanels.forEach(el => el.style.display = '');
     document.getElementById('print-header').style.display = 'none';
     chrome.forEach(el => el.style.display = '');
+    // Remove PDF override styles
+    const pdfStyleEl = document.getElementById('pdf-override');
+    if (pdfStyleEl) pdfStyleEl.remove();
     // Restore two-col layout
     twoColEls.forEach(el => { el.style.display = ''; });
     // Restore chart heights and redraw
