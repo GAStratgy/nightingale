@@ -1,0 +1,2488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SBX Performance Dashboard · Grey Area Strategy</title>
+<script>
+function sbxUnlock() {
+  var input = document.getElementById('auth-input');
+  var err = document.getElementById('auth-err');
+  if (!input) return;
+  if (input.value.trim().toLowerCase() === 'huw') {
+    var gate = document.getElementById('auth-gate');
+    gate.style.transition = 'opacity .3s';
+    gate.style.opacity = '0';
+    document.body.style.overflow = '';
+    setTimeout(function() { gate.style.display = 'none'; }, 320);
+  } else {
+    err.style.display = 'block';
+    input.value = '';
+    input.focus();
+  }
+}
+// Keep body scroll locked while gate is showing
+document.addEventListener('DOMContentLoaded', function() {
+  document.body.style.overflow = 'hidden';
+  var input = document.getElementById('auth-input');
+  if (input) input.focus();
+});
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-datalabels/2.2.0/chartjs-plugin-datalabels.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --white:   #ffffff;
+  --bg:      #F9F9F8;
+  --panel:   #ffffff;
+  --border:  #EBEBE8;
+  --text:    #1A1A1A;
+  --sub:     #374151;
+  --muted:   #6B7280;
+  --dim:     #c0c0c8;
+  --s0:      #C05600;
+  --s0-bg:   #FFF4EC;
+  --s1:      #0052CC;
+  --s1-bg:   #E6EEFF;
+  --s2:      #00875A;
+  --s2-bg:   #E6F4ED;
+  --gain:    #00875A;
+  --gain-bg: #E6F4ED;
+  --sec-bg:  #F3F3F1;
+  --orange:  #C05600;
+  --red:     #c03030;
+  --gold:    #a07800;
+  --purple:  #5a3fa0;
+  --r:       16px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, 'Helvetica Neue', Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+}
+
+/* ── Header ── */
+.hdr {
+  background: #0F1923;
+  border-bottom: none;
+  padding: 28px 36px 26px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.hdr-left h1 { font-size: 16px; font-weight: 800; letter-spacing: .03em; color: #ffffff; }
+.hdr-left p  { font-size: 11px; color: rgba(255,255,255,0.45); margin-top: 4px; letter-spacing: .03em; }
+
+/* Color legend in header */
+.legend {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.leg-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px 5px 8px;
+  border-radius: 20px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  border: 1.5px solid rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.75);
+  background: rgba(255,255,255,0.06);
+}
+.leg-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.leg-bef .leg-dot { background: var(--s0); }
+.leg-s1  .leg-dot { background: #5b9bd5; }
+.leg-s2  .leg-dot { background: #2ecc8a; }
+
+/* ── Nav ── */
+.nav {
+  background: var(--white);
+  border-bottom: 2px solid var(--border);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+  display: flex;
+  padding: 0 36px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.nav::-webkit-scrollbar { display: none; }
+.nav-btn {
+  flex-shrink: 0;
+  height: 48px;
+  padding: 0 22px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: color .15s, border-color .15s;
+  white-space: nowrap;
+}
+.nav-btn:hover { color: var(--text); }
+.nav-btn.active { color: var(--purple); border-bottom-color: var(--purple); }
+
+/* ── Tab panels ── */
+.tab { display: none; padding: 28px 36px 72px; max-width: 1280px; margin: 0 auto; }
+.tab.active { display: block; }
+
+/* ── Hero Stats ── */
+.hero-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 28px;
+}
+.hero-stat {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07), 0 8px 24px rgba(0,0,0,0.06);
+  padding: 24px 18px 20px;
+  text-align: center;
+  border-top: 3px solid var(--gain);
+}
+.hero-val {
+  font-size: 52px;
+  font-weight: 900;
+  color: var(--gain);
+  line-height: 1;
+  letter-spacing: -.03em;
+  margin-bottom: 10px;
+}
+.hero-val.gold { color: var(--gold); }
+.hero-label {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  margin-bottom: 6px;
+}
+.hero-sub {
+  font-size: 10px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ── Season Arc ── */
+.arc-wrap {
+  display: grid;
+  grid-template-columns: 1fr 40px 1fr 40px 1fr;
+  margin-bottom: 28px;
+  align-items: start;
+}
+.arc-col {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.05);
+  padding: 18px 20px 16px;
+}
+.arc-col.arc-s2 { background: var(--s2-bg); border-color: rgba(0,135,90,0.2); }
+.arc-season {
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+.arc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 7px 0;
+  border-top: 1px solid var(--border);
+}
+.arc-k { font-size: 11.5px; color: var(--sub); }
+.arc-v { font-size: 13px; font-weight: 700; color: var(--text); }
+.arc-v em { font-style: normal; font-size: 10px; font-weight: 800; color: var(--gain); margin-left: 5px; }
+.arc-bad { color: var(--s0) !important; }
+.arc-best { color: var(--s2) !important; }
+.arc-arrow {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; color: var(--dim);
+  padding-top: 60px;
+}
+
+/* ════════════════════════════════ OVERVIEW TAB ═══════════ */
+
+/* Olympic banner */
+.oly {
+  background: linear-gradient(135deg, #FFFBEB 0%, #FFF8E1 100%);
+  border: 1px solid #FDE68A;
+  border-left: 6px solid #F59E0B;
+  border-radius: var(--r);
+  box-shadow: 0 4px 24px rgba(245,158,11,0.14), 0 1px 4px rgba(245,158,11,0.08);
+  padding: 22px 28px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+}
+.oly-icon { font-size: 30px; }
+.oly h2   { font-size: 14px; font-weight: 800; color: #5a3a00; }
+.oly p    { font-size: 11px; color: #8a6018; margin-top: 3px; }
+.oly-num  { margin-left: auto; text-align: right; }
+.oly-big  { font-size: 28px; font-weight: 900; color: var(--gold); line-height: 1; }
+.oly-sm   { font-size: 9px; color: #8a6018; text-transform: uppercase; letter-spacing: .07em; margin-top: 3px; }
+
+/* ── Section label ── */
+.sec-lbl {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--purple);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 10px 16px;
+  background: #f5f3ff;
+  border-radius: 10px;
+  border-left: 4px solid var(--purple);
+}
+.sec-lbl::before { display: none; }
+
+/* ── Competitive Identity Shift ── */
+.cid-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.cid-item {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04);
+  padding: 18px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 3px solid var(--purple);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+.cid-item:hover { transform: translateY(-3px); box-shadow: 0 8px 28px rgba(0,0,0,0.10); }
+.cid-num {
+  font-size: 9.5px;
+  font-weight: 900;
+  color: var(--purple);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+.cid-body {
+  font-size: 12px;
+  color: var(--sub);
+  line-height: 1.6;
+}
+.cid-body strong {
+  display: block;
+  color: var(--text);
+  font-size: 12.5px;
+  margin-bottom: 4px;
+}
+
+/* ── Before vs. Now cards ── */
+.bvn-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 14px;
+  margin-bottom: 36px;
+}
+.bvn-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.06);
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  display: flex;
+  flex-direction: column;
+}
+.bvn-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.09), 0 16px 40px rgba(0,0,0,0.09);
+}
+.bvn-card-top {
+  padding: 16px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  flex: 1;
+}
+.bvn-card-bottom {
+  background: var(--gain-bg);
+  border-top: 1px solid rgba(0,135,90,0.12);
+  padding: 14px 16px 16px;
+  text-align: center;
+}
+.bvn-label {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.bvn-before {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--s0);
+  line-height: 1;
+  opacity: 0.85;
+}
+.bvn-arrow {
+  font-size: 18px;
+  color: var(--gain);
+  margin: 2px 0;
+  line-height: 1;
+}
+.bvn-now {
+  font-size: 32px;
+  font-weight: 900;
+  color: var(--gain);
+  line-height: 1;
+  letter-spacing: -.02em;
+}
+.bvn-delta {
+  display: inline-flex;
+  align-items: center;
+  color: var(--gain);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+
+/* ── Top 5 Findings ── */
+.findings-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 36px;
+}
+.finding-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.05);
+  padding: 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.finding-card:hover { transform: translateY(-3px); box-shadow: 0 4px 16px rgba(0,0,0,0.09), 0 16px 40px rgba(0,0,0,0.08); }
+.finding-num {
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--purple);
+  letter-spacing: .05em;
+}
+.finding-stat {
+  font-size: 24px;
+  font-weight: 900;
+  color: var(--s2);
+  line-height: 1;
+  letter-spacing: -.01em;
+}
+.finding-headline {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.4;
+}
+.finding-sub {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+/* ── Data table ── */
+.tbl-section {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--purple);
+  margin: 32px 0 12px;
+  padding: 10px 16px;
+  background: #f5f3ff;
+  border-radius: 10px;
+  border-left: 4px solid var(--purple);
+  display: block;
+}
+
+.data-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  margin-bottom: 28px;
+}
+.data-tbl th {
+  padding: 13px 20px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 700;
+  border-bottom: 2px solid var(--border);
+  background: var(--white);
+  vertical-align: bottom;
+}
+.data-tbl th:first-child { text-align: left; min-width: 180px; }
+.data-tbl th.h-bef { color: var(--s0); font-size: 13px; font-weight: 800; border-bottom-color: var(--s0); }
+.data-tbl th.h-s1  { color: var(--s1); font-size: 13px; font-weight: 800; border-bottom-color: var(--s1); }
+.data-tbl th.h-s2  { color: var(--s2); font-size: 13px; font-weight: 800; border-bottom-color: var(--s2); }
+.data-tbl th .small { font-size: 10px; font-weight: 500; color: var(--dim); display: block; margin-bottom: 2px; }
+.data-tbl td {
+  padding: 11px 20px;
+  text-align: right;
+  border-top: 1px solid var(--border);
+  font-size: 13.5px;
+  color: var(--sub);
+}
+.data-tbl td:first-child { text-align: left; color: var(--text); font-weight: 500; }
+.data-tbl td.v-bef { color: var(--s0); font-weight: 700; background: var(--s0-bg); }
+.data-tbl td.v-s1  { color: var(--s1); font-weight: 700; background: var(--s1-bg); }
+.data-tbl td.v-s2  { color: var(--s2); font-weight: 700; background: var(--s2-bg); }
+.data-tbl td.muted-val { color: var(--dim); }
+.data-tbl tr.sec-row td {
+  background: var(--sec-bg);
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  padding: 8px 20px;
+  border-top: 2px solid var(--border);
+}
+
+/* Shift table */
+.shift-tbl {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.shift-tbl thead th {
+  padding: 11px 20px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 2px solid var(--border);
+}
+.shift-tbl tbody tr { border-top: 1px solid var(--border); }
+.shift-tbl tbody tr:first-child { border-top: none; }
+.shift-tbl td { padding: 14px 20px; vertical-align: middle; }
+.shift-tbl td.metric { font-size: 13px; font-weight: 700; color: var(--text); width: 26%; }
+.shift-tbl td.before { font-size: 16px; font-weight: 700; color: var(--s0); text-align: center; width: 14%; }
+.shift-tbl td.now    { font-size: 22px; font-weight: 900; color: var(--s2); background: var(--s2-bg); text-align: center; width: 14%; }
+.shift-tbl td.delta  { text-align: center; width: 13%; }
+.shift-tbl td.meaning { font-size: 12px; color: var(--muted); line-height: 1.55; }
+.delta-pill {
+  display: inline-block;
+  background: var(--gain-bg);
+  color: var(--gain);
+  border-radius: 20px;
+  padding: 4px 11px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+/* Inline delta pills in data table */
+.dpill {
+  display: inline-block;
+  background: var(--gain-bg);
+  color: var(--gain);
+  border-radius: 20px;
+  padding: 4px 11px;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.new-pill {
+  background: #eef0fd;
+  color: var(--purple);
+}
+
+/* ════════════════════════════════ CHARTS TAB ════════════ */
+
+.chart-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.06);
+  padding: 24px 26px;
+  margin-bottom: 16px;
+}
+.chart-card h3   { font-size: 13.5px; font-weight: 800; color: var(--text); margin-bottom: 4px; }
+.chart-card .sub { font-size: 11px; color: var(--muted); margin-bottom: 18px; line-height: 1.45; }
+.chart-wrap { position: relative; width: 100%; }
+.chart-wrap canvas { width: 100% !important; }
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+/* ════════════════════════════════ RACES TAB ════════════ */
+
+.subnav { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+.sub-btn {
+  padding: 7px 18px;
+  border-radius: 7px;
+  border: 1.5px solid var(--border);
+  background: var(--white);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all .15s;
+}
+.sub-btn:hover { color: var(--text); border-color: var(--dim); }
+.sub-btn.active.s0 { background: var(--s0-bg); border-color: #e0b070; color: var(--s0); }
+.sub-btn.active.s1 { background: var(--s1-bg); border-color: #90b8d8; color: var(--s1); }
+.sub-btn.active.s2 { background: var(--s2-bg); border-color: #90c8a8; color: var(--s2); }
+
+.sub-panel { display: none; }
+.sub-panel.active { display: block; }
+
+.sstat-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.sstat {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 11px 18px;
+  text-align: center;
+  min-width: 96px;
+}
+.sstat .sv { font-size: 19px; font-weight: 900; }
+.sstat .sl { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; margin-top: 2px; }
+
+.table-wrap {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  overflow-x: auto;
+}
+.rt { width: 100%; border-collapse: collapse; min-width: 480px; }
+.rt thead th {
+  padding: 9px 16px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--sec-bg);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+.rt tbody tr { border-top: 1px solid var(--border); }
+.rt tbody tr:hover td { background: #fafaf8; }
+.rt td { padding: 9px 16px; font-size: 13px; }
+.et { color: var(--muted); font-size: 11px; }
+
+.r-top5  td { background: #fffbea; }
+.r-top10 td { background: #f0fbf5; }
+.r-top16 td { background: #f0f7fc; }
+.r-dnq   td { background: #fdf6f6; }
+.r-dnq td:not(:last-child) { color: var(--dim); }
+.r-team  td { background: #f7f4fd; }
+
+.rbadge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+.rb-gold  { background: #fff3c4; color: #7a5200; border: 1px solid #d4b040; }
+.rb-top10 { background: #e6f4ec; color: var(--s2); }
+.rb-top16 { background: #e6f0f8; color: var(--s1); }
+.rb-top20 { background: #eef4fa; color: #4080b0; }
+.rb-q     { background: #f2f2f0; color: var(--sub); }
+.rb-dnq   { background: #fdecea; color: var(--red); }
+.rb-team  { background: #f0ecfd; color: var(--purple); }
+
+/* ════════════════════════════════ TEAM TAB ════════════ */
+
+.team-intro {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 18px 22px;
+  margin-bottom: 24px;
+  font-size: 13px;
+  color: var(--sub);
+  line-height: 1.7;
+}
+
+.team-season-hdr {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 28px 0 14px;
+}
+.team-season-badge {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  padding: 5px 14px;
+  border-radius: 20px;
+}
+.tsb-s1 { background: var(--s1-bg); color: var(--s1); border: 1.5px solid #90b8d8; }
+.tsb-s2 { background: var(--s2-bg); color: var(--s2); border: 1.5px solid #90c8a8; }
+
+.team-cards { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 20px; }
+.team-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 18px 18px 16px;
+  position: relative;
+  overflow: hidden;
+}
+.team-card.gold-card { border-color: #d4b840; }
+.team-card.gold-card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #d4b840, #f0d060);
+}
+.team-card.silver-card::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: #b0b8c8;
+}
+.tc-venue { font-size: 15px; font-weight: 800; color: var(--text); margin-bottom: 4px; }
+.tc-date  { font-size: 10.5px; color: var(--muted); margin-bottom: 12px; }
+.tc-result {
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.tc-gold   { color: var(--gold); }
+.tc-silver { color: #7a8898; }
+.tc-other  { color: var(--sub); }
+.tc-event  { font-size: 11px; color: var(--muted); }
+.tc-context { font-size: 11px; color: var(--sub); margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); line-height: 1.5; }
+
+.team-record {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  margin-top: 8px;
+}
+.team-record-hdr {
+  padding: 10px 18px;
+  background: var(--sec-bg);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+}
+.team-record table { width: 100%; border-collapse: collapse; }
+.team-record td, .team-record th {
+  padding: 10px 18px;
+  text-align: left;
+  font-size: 13px;
+  border-top: 1px solid var(--border);
+}
+.team-record th { background: none; font-size: 10px; font-weight: 700; color: var(--muted); letter-spacing: .07em; text-transform: uppercase; }
+.team-record tr:first-child td, .team-record tr:first-child th { border-top: none; }
+.team-record td.res-gold   { color: var(--gold); font-weight: 800; font-size: 15px; }
+.team-record td.res-silver { color: #6a7888; font-weight: 800; font-size: 15px; }
+.team-record td.res-other  { color: var(--sub); font-weight: 700; }
+
+/* PDF button */
+.pdf-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  background: rgba(255,255,255,0.12);
+  border: 1.5px solid rgba(255,255,255,0.22);
+  border-radius: 8px;
+  color: rgba(255,255,255,0.85);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.pdf-btn:hover { background: rgba(255,255,255,0.2); }
+
+/* Instructional bar */
+.hint-bar {
+  background: var(--sec-bg);
+  border-bottom: 1px solid var(--border);
+  padding: 7px 36px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* Footer */
+.ftr {
+  padding: 16px 36px;
+  border-top: 1px solid var(--border);
+  background: var(--white);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ftr p { font-size: 10.5px; color: var(--muted); }
+.ftr .brand { font-size: 11px; font-weight: 800; color: var(--purple); }
+
+/* ════════════════════════════════ PRINT / PDF ═══════════ */
+/* ══════════════════════════ PRINT HEADER (hidden on screen) ══ */
+#print-header {
+  display: none;
+  padding: 12px 0 8px;
+  border-bottom: 2px solid #0F1923;
+  margin-bottom: 12px;
+}
+#print-header h2 { font-size: 15px; font-weight: 800; color: #0F1923; letter-spacing: .02em; }
+#print-header p  { font-size: 10px; color: #555; margin-top: 2px; }
+
+/* ══════════════════════════ PRINT / PDF ══════════════════════ */
+@page { size: A4 landscape; margin: 12mm 14mm; }
+
+@media print {
+  /* Color fidelity */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  /* Hide all UI chrome */
+  .nav, .hint-bar, .pdf-btn, .ftr, .subnav { display: none !important; }
+  .hdr { display: none !important; }
+
+  /* Show print-only header */
+  #print-header { display: block !important; }
+
+  /* Body */
+  html, body { background: #fff !important; color: #000 !important; font-size: 9.5px; }
+
+  /* Stack everything vertically, full width */
+  .tab { padding: 0 !important; width: 100% !important; }
+  .two-col { display: block !important; }
+  .two-col > * { margin-bottom: 6px; width: 100% !important; }
+
+  /* Hero */
+  .hero-grid { grid-template-columns: repeat(4,1fr); gap: 5px; margin-bottom: 8px; }
+  .hero-val  { font-size: 22px; }
+  .hero-stat { padding: 7px 9px; }
+  .hero-label, .hero-sub { font-size: 8.5px; }
+
+  /* Olympic banner */
+  .oly { padding: 7px 10px; margin-bottom: 7px; gap: 8px; flex-wrap: nowrap; }
+  .oly-big { font-size: 22px; }
+  .oly h2  { font-size: 12px; }
+  .oly p   { font-size: 8px; }
+
+  /* Season arc */
+  .arc-wrap   { grid-template-columns: 1fr 14px 1fr 14px 1fr; gap: 4px; }
+  .arc-row    { padding: 2px 0; font-size: 8.5px; }
+  .arc-season { font-size: 9px; }
+  .sec-lbl, .tbl-section { font-size: 8.5px; margin: 5px 0 3px; padding: 2px 6px; }
+
+  /* Chart cards — never split across pages */
+  .chart-card {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+    margin-bottom: 6px;
+    padding: 7px 9px;
+  }
+  .chart-card h3   { font-size: 9.5px; margin-bottom: 1px; }
+  .chart-card .sub { font-size: 7.5px; color: #555 !important; }
+  .chart-wrap      { height: 130px !important; }
+  .chart-wrap canvas { max-height: 130px !important; }
+
+  /* Tables */
+  .data-tbl, .shift-tbl, .rt { font-size: 8px; width: 100%; }
+  .data-tbl th, .data-tbl td,
+  .shift-tbl th, .shift-tbl td,
+  .rt th, .rt td { padding: 2px 5px; }
+  .dpill, .delta-pill { font-size: 7.5px; padding: 1px 4px; }
+  .meaning { font-size: 7.5px; }
+  .shift-tbl td.meaning { display: table-cell !important; }
+
+  /* Team cards */
+  .team-cards  { grid-template-columns: repeat(3,1fr); gap: 5px; }
+  .team-card   { padding: 7px 9px; page-break-inside: avoid; break-inside: avoid; }
+  .tc-result   { font-size: 16px; }
+  .tc-context  { font-size: 7.5px; }
+  .team-intro  { font-size: 8px; padding: 5px 9px; }
+  .team-season-hdr { margin: 7px 0 4px; }
+  .tc-venue    { font-size: 10px; }
+  .tc-date, .tc-event { font-size: 7.5px; }
+}
+
+/* ══════════════════════════ MOBILE (≤768px) ══════════════════ */
+@media screen and (max-width: 768px) {
+  /* Nav: horizontally scrollable */
+  .nav { overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; padding: 0 12px; }
+  .nav::-webkit-scrollbar { display: none; }
+
+  /* Charts: full width */
+  .two-col { grid-template-columns: 1fr !important; }
+  .chart-wrap { height: 220px !important; }
+  /* Venue chart needs more rows — override the 220px cap */
+  .venue-chart-wrap { height: 350px !important; }
+  /* Dumbbell: reduce right padding so labels don't clip on narrow screens */
+  .dumbbell-chart-wrap { padding-right: 0; }
+
+  /* KPI numbers: scale down so they don't wrap */
+  .hero-val  { font-size: 32px; }
+  .hero-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .hero-stat { padding: 10px 12px; }
+
+  /* Season arc: single column */
+  .arc-wrap { grid-template-columns: 1fr !important; }
+  .arc-arrow { display: none; }
+  .arc-col.arc-s2 { grid-column: auto !important; }
+
+  /* Tables: horizontal scroll */
+  .data-tbl, .shift-tbl { font-size: 11px; }
+  .shift-tbl td.meaning { display: none; }
+
+  /* Team cards */
+  .team-cards { grid-template-columns: 1fr !important; }
+
+  /* Hint bar */
+  .hint-bar { font-size: 10.5px; padding: 6px 12px; }
+}
+
+/* ════════════════════════════════ MOBILE ════════════════ */
+@media (max-width: 860px) {
+  .bvn-grid { grid-template-columns: repeat(3,1fr); }
+  .findings-grid { grid-template-columns: repeat(3,1fr); }
+  .team-cards { grid-template-columns: 1fr 1fr; }
+  .cid-grid { grid-template-columns: repeat(3,1fr); }
+  .hero-grid { grid-template-columns: repeat(2,1fr); }
+  .arc-wrap { grid-template-columns: 1fr 24px 1fr; gap: 8px; }
+  .arc-wrap .arc-col:last-child { grid-column: 1 / -1; }
+  .arc-arrow { padding-top: 24px; font-size: 16px; }
+}
+@media (max-width: 640px) {
+  .hdr { padding: 12px 16px; }
+  .nav { padding: 0 16px; }
+  .tab { padding: 18px 16px 52px; }
+  .bvn-grid { grid-template-columns: repeat(2,1fr); }
+  .findings-grid { grid-template-columns: 1fr 1fr; }
+  .cid-grid { grid-template-columns: 1fr 1fr; }
+  .two-col { grid-template-columns: 1fr; }
+  .team-cards { grid-template-columns: 1fr; }
+  .hero-grid { grid-template-columns: repeat(2,1fr); gap: 10px; }
+  .hero-val { font-size: 38px; }
+  .arc-wrap { grid-template-columns: 1fr; }
+  .arc-arrow { display: none; }
+  .shift-tbl td.meaning { display: none; }
+  .data-tbl th, .data-tbl td { padding: 8px 10px; font-size: 11.5px; }
+  .data-tbl th:last-child, .data-tbl td:last-child { display: none; }
+  .oly { flex-direction: column; gap: 10px; }
+  .oly-num { margin-left: 0; }
+}
+</style>
+</head>
+<body>
+
+<!-- ── Password gate ── -->
+<div id="auth-gate" style="display:flex;position:fixed;inset:0;z-index:9999;background:#0F1923;flex-direction:column;align-items:center;justify-content:center;gap:24px;">
+  <div style="text-align:center;margin-bottom:8px;">
+    <div style="font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,0.35);margin-bottom:12px;">Grey Area Strategy</div>
+    <div style="font-size:22px;font-weight:800;color:#ffffff;letter-spacing:-.01em;">SBX Performance Dashboard</div>
+    <div style="font-size:13px;color:rgba(255,255,255,0.4);margin-top:6px;">Huw Nightingale · 3-Season Analysis · CONFIDENTIAL</div>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:12px;width:100%;max-width:280px;">
+    <input id="auth-input" type="text" placeholder="Enter access code" autocomplete="off" onkeydown="if(event.key==='Enter')sbxUnlock()" style="width:100%;padding:13px 18px;border-radius:10px;border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.07);color:#fff;font-size:15px;font-family:inherit;text-align:center;letter-spacing:.12em;outline:none;" />
+    <button onclick="sbxUnlock()" style="width:100%;padding:13px;border-radius:10px;border:none;background:#5a3fa0;color:#fff;font-size:13px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;">Access Dashboard</button>
+    <div id="auth-err" style="display:none;font-size:12px;color:#e05555;letter-spacing:.03em;">Incorrect code. Try again.</div>
+  </div>
+  <div style="font-size:10px;color:rgba(255,255,255,0.18);margin-top:16px;">greyareatraining.com</div>
+</div>
+
+<!-- Print-only header — hidden on screen, shown in PDF export -->
+<div id="print-header">
+  <h2>Athlete Performance Audit — Huw Nightingale · Snowboard Cross · Great Britain</h2>
+  <p>Grey Area Strategy · Nightingale 3-Season Analysis · Generated <span id="print-date"></span></p>
+</div>
+<script>document.getElementById('print-date').textContent = new Date().toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'});</script>
+
+<!-- ═══ Header ═══ -->
+<div class="hdr">
+  <div class="hdr-left">
+    <h1>Huw Nightingale · Snowboard Cross</h1>
+    <p>Great Britain · Three-Season Performance Analysis 2023–26 · Grey Area Strategy</p>
+  </div>
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <div class="legend">
+      <div class="leg-item leg-bef"><div class="leg-dot"></div>2023–24 Pre-Work</div>
+      <div class="leg-item leg-s1"><div class="leg-dot"></div>2024–25 Season 1</div>
+      <div class="leg-item leg-s2"><div class="leg-dot"></div>2025–26 Season 2</div>
+    </div>
+    <button class="pdf-btn" onclick="printAll()">⬇ Download PDF</button>
+  </div>
+</div>
+
+<div class="hint-bar">Click any tab to switch views · Hover charts for exact values · Download PDF exports all tabs</div>
+<nav class="nav">
+  <button class="nav-btn active" onclick="switchTab('overview',this)">Overview</button>
+  <button class="nav-btn"        onclick="switchTab('charts',this)">Charts</button>
+  <button class="nav-btn"        onclick="switchTab('season',this)">3-Season Data</button>
+</nav>
+
+
+<!-- ═══════════════════════════════ TAB: OVERVIEW ═══════════ -->
+<div id="tab-overview" class="tab active">
+
+  <!-- Olympic banner -->
+  <div class="oly">
+    <div class="oly-icon">🥇</div>
+    <div>
+      <h2>Olympic Gold · Mixed Team SBX · Milano-Cortina 2026</h2>
+      <p>Great Britain's first Olympic snowsports gold in 102 years</p>
+    </div>
+    <div class="oly-num">
+      <div class="oly-big">102</div>
+      <div class="oly-sm">years in the making</div>
+    </div>
+  </div>
+
+  <!-- Hero Stats -->
+  <div class="hero-grid">
+    <div class="hero-stat">
+      <div class="hero-val">81%</div>
+      <div class="hero-label" style="color:var(--gain)">↓ Decrease</div>
+      <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:6px">DNQ Miss Margin</div>
+      <div class="hero-sub">13.3 → 2.5 positions · misses now by fractions</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-val">5×</div>
+      <div class="hero-label" style="color:var(--gain)">↑ Increase</div>
+      <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:6px">Qualification Rate</div>
+      <div class="hero-sub">14.3% → 71.4% · Pre-Work → Season 2</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-val">6×</div>
+      <div class="hero-label" style="color:var(--gain)">↑ Increase</div>
+      <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:6px">Top-20 Race Ranking</div>
+      <div class="hero-sub">8.3% → 50% · Pre-Work → Season 2</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-val">+25</div>
+      <div class="hero-label" style="color:var(--gain)">↑ Increase</div>
+      <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:6px">Performance Floor</div>
+      <div class="hero-sub">60th → 35th · worst finish lifted 25 places</div>
+    </div>
+  </div>
+
+  <!-- Season Arc -->
+  <div class="sec-lbl">Three-Season Progression · All % deltas vs 2023–24 Baseline</div>
+  <div class="arc-wrap">
+    <div class="arc-col">
+      <div class="arc-season" style="color:var(--s0)">2023–24 · Baseline</div>
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--s1);padding:8px 0 4px;border-bottom:1px solid var(--border)">Qualification</div>
+      <div class="arc-row"><span class="arc-k">Avg Qual Seed</span><span class="arc-v arc-bad">43.1</span></div>
+      <div class="arc-row"><span class="arc-k">Qualification Rate</span><span class="arc-v arc-bad">14.3%</span></div>
+      <div class="arc-row"><span class="arc-k">DNQ Miss Margin</span><span class="arc-v arc-bad">13.3 pos</span></div>
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:8px 0 4px;border-bottom:1px solid var(--border);margin-top:6px">Race</div>
+      <div class="arc-row"><span class="arc-k">Avg Race Finish</span><span class="arc-v arc-bad">40.9</span></div>
+      <div class="arc-row"><span class="arc-k">Top-20 Race Ranking</span><span class="arc-v arc-bad">8.3%</span></div>
+      <div class="arc-row"><span class="arc-k">Worst Finish</span><span class="arc-v arc-bad">60th</span></div>
+    </div>
+    <div class="arc-arrow">→</div>
+    <div class="arc-col">
+      <div class="arc-season" style="color:var(--s1)">2024–25 · Season 1 <span style="font-size:9px;color:var(--muted);font-weight:500">(vs baseline)</span></div>
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--s1);padding:8px 0 4px;border-bottom:1px solid var(--border)">Qualification</div>
+      <div class="arc-row"><span class="arc-k">Avg Qual Seed</span><span class="arc-v">26.9 <em>↑ 38% vs base</em></span></div>
+      <div class="arc-row"><span class="arc-k">Qualification Rate</span><span class="arc-v">66.7% <em>↑ 4.7× vs base</em></span></div>
+      <div class="arc-row"><span class="arc-k">DNQ Miss Margin</span><span class="arc-v">8.0 pos <em>↑ 40% vs base</em></span></div>
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:8px 0 4px;border-bottom:1px solid var(--border);margin-top:6px">Race</div>
+      <div class="arc-row"><span class="arc-k">Avg Race Finish</span><span class="arc-v">27.7 <em>↑ 32% vs base</em></span></div>
+      <div class="arc-row"><span class="arc-k">Top-20 Race Ranking</span><span class="arc-v">18.2% <em>↑ 2.2× vs base</em></span></div>
+      <div class="arc-row"><span class="arc-k">Worst Finish</span><span class="arc-v">43rd <em>↑ 28% vs base</em></span></div>
+    </div>
+    <div class="arc-arrow">→</div>
+    <div class="arc-col arc-s2">
+      <div class="arc-season" style="color:var(--s2)">2025–26 · Season 2 · Olympic 🥇 <span style="font-size:9px;color:var(--muted);font-weight:500">(vs baseline)</span></div>
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--s1);padding:8px 0 4px;border-bottom:1px solid rgba(0,135,90,0.2)">Qualification</div>
+      <div class="arc-row"><span class="arc-k">Avg Qual Seed</span><span class="arc-v arc-best">21.3 <em>↑ 51% vs base</em></span></div>
+      <div class="arc-row"><span class="arc-k">Qualification Rate</span><span class="arc-v arc-best">71.4% <em>↑ 5× vs base</em></span></div>
+      <div class="arc-row"><span class="arc-k">DNQ Miss Margin</span><span class="arc-v arc-best">2.5 pos <em>↑ 81% vs base</em></span></div>
+      <div style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);padding:8px 0 4px;border-bottom:1px solid rgba(0,135,90,0.2);margin-top:6px">Race</div>
+      <div class="arc-row"><span class="arc-k">Avg Race Finish</span><span class="arc-v arc-best">23.0 <em>↑ 44% vs base</em></span></div>
+      <div class="arc-row"><span class="arc-k">Top-20 Race Ranking</span><span class="arc-v arc-best">50.0% <em>↑ 6× vs base</em></span></div>
+      <div class="arc-row"><span class="arc-k">Worst Finish</span><span class="arc-v arc-best">35th <em>↑ 42% vs base</em></span></div>
+    </div>
+  </div>
+
+  <!-- Performance Charts -->
+  <div class="sec-lbl" style="margin-top:24px">Qualification Finish Rates</div>
+  <div class="two-col" style="margin-bottom:24px">
+    <div class="chart-card" style="margin-bottom:0">
+      <h3>Qualification Rates</h3>
+      <div class="sub">Top-20 = first-round direct qualifier. 21–32 = second round. 0% to 71.4% Top-20 is the headline number.</div>
+      <div class="chart-wrap" style="height:260px"><canvas id="ovQualTierChart"></canvas></div>
+    </div>
+    <div class="chart-card" style="margin-bottom:0">
+      <h3>Race Finish Rates</h3>
+      <div class="sub">How often he finishes inside each cutoff. Race results carry more noise than qual, but the shift from 75% DNQ to 75% Top-32 is signal regardless of variance.</div>
+      <div class="chart-wrap" style="height:260px"><canvas id="ovTierChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Key Bracket Moment -->
+  <div style="background:#eef4ff;border:2px solid #0052CC44;border-radius:10px;padding:18px 20px;margin:20px 0">
+    <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:#0052CC;margin-bottom:10px">KEY BRACKET MOMENT · SEASON 2</div>
+    <div style="display:flex;align-items:flex-start;gap:14px">
+      <div style="flex:0 0 auto;text-align:center">
+        <div style="font-size:32px;font-weight:900;color:#0052CC;line-height:1">1st</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">in heat</div>
+      </div>
+      <div>
+        <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:4px">Mt. St. Anne · March 28, 2026 · 1/8th Final</div>
+        <div style="font-size:12px;color:var(--text);line-height:1.55">First individual heat win. Beat Alessandro Haemmerle — 2026 Olympic individual champion — in the 1/8th final.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pre-Work vs Current -->
+  <div class="sec-lbl" style="margin-top:8px">Pre-Work vs. Current — The Shift</div>
+  <div style="overflow-x:auto;margin-bottom:24px">
+  <table class="shift-tbl">
+    <thead>
+      <tr>
+        <th>Metric</th>
+        <th style="text-align:center">Pre-Work</th>
+        <th style="text-align:center">Now</th>
+        <th style="text-align:center">Change</th>
+        <th>What It Means</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="metric">Avg qualification seed</td>
+        <td class="before">43.1</td>
+        <td class="now">21.3</td>
+        <td class="delta"><span class="delta-pill">↑ 51% Rank Elevation</span></td>
+        <td class="meaning">21.8 places better. From outside the bubble to consistently Top Tier.</td>
+      </tr>
+      <tr>
+        <td class="metric">Qualification rate (Top-32)</td>
+        <td class="before">14.3%</td>
+        <td class="now">71.4%</td>
+        <td class="delta"><span class="delta-pill">↑ 5× Conversion</span></td>
+        <td class="meaning">Qualifying 1-in-7 times. Now 5-in-7. Structural transformation.</td>
+      </tr>
+      <tr>
+        <td class="metric">Avg DNQ miss margin</td>
+        <td class="before">13.3</td>
+        <td class="now">2.5</td>
+        <td class="delta"><span class="delta-pill">↑ 81% Gap Closed</span></td>
+        <td class="meaning">Was missing the field by 13 places. Now 2.5 — DNQs only at season-open.</td>
+      </tr>
+      <tr>
+        <td class="metric">Average race finish</td>
+        <td class="before">40.9</td>
+        <td class="now">23.0</td>
+        <td class="delta"><span class="delta-pill">↑ 44% Improvement</span></td>
+        <td class="meaning">17.9 places better sustained across a full competitive season.</td>
+      </tr>
+      <tr>
+        <td class="metric">Top-20 race ranking</td>
+        <td class="before">8.3%</td>
+        <td class="now">50%</td>
+        <td class="delta"><span class="delta-pill">↑ 6× Bracket Access</span></td>
+        <td class="meaning">From 1-in-12 to 1-in-2 top-20 finishes.</td>
+      </tr>
+      <tr>
+        <td class="metric">Worst finish (floor)</td>
+        <td class="before">60th</td>
+        <td class="now">35th</td>
+        <td class="delta"><span class="delta-pill">↑ 42% Floor Lift</span></td>
+        <td class="meaning">Floor raised 25 places. Consistent even on difficult race days.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <!-- 2026-27 Development Target -->
+  <div style="background:#fdf4e7;border:2px solid #C0560044;border-radius:10px;padding:18px 20px;margin-top:24px">
+    <div style="font-size:9px;font-weight:700;letter-spacing:.1em;color:#C05600;margin-bottom:10px">2026–27 DEVELOPMENT TARGET</div>
+    <div style="font-size:15px;font-weight:700;color:var(--text);line-height:1.4;margin-bottom:8px">Convert first-place 1/8th final heat results into semifinal appearances.</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.5">Heat wins are established. The next threshold is top-8 consistency — turning bracket entry into bracket depth.</div>
+  </div>
+
+</div><!-- /overview -->
+
+
+<!-- ═══════════════════════════════ TAB: SEASON DATA ═══════════ -->
+<div id="tab-season" class="tab">
+
+  <div class="tbl-section">Three-Season Performance Data</div>
+  <div style="overflow-x:auto">
+  <table class="data-tbl">
+    <thead>
+      <tr>
+        <th></th>
+        <th class="h-bef"><span class="small">— Pre-Work</span>2023–24</th>
+        <th class="h-s1"><span class="small">Season 1</span>2024–25</th>
+        <th class="h-s2"><span class="small">Season 2</span>2025–26</th>
+        <th style="text-align:center;color:var(--gain);font-size:11px;font-weight:800;border-bottom:2px solid var(--gain);letter-spacing:.07em"><span class="small" style="color:var(--muted)">Pre-Work → S2</span>Δ Change</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="sec-row"><td colspan="5">Race Results (World Cup / World Champs only)</td></tr>
+      <tr><td>Events</td><td class="muted-val">12</td><td>11</td><td>8</td><td class="muted-val" style="text-align:center;font-size:11px">—</td></tr>
+      <tr><td>Average finish</td><td class="v-bef">40.9</td><td class="v-s1">27.7</td><td class="v-s2">23.0</td><td style="text-align:center"><span class="dpill">↑ 44%</span></td></tr>
+      <tr><td>Median finish</td><td class="v-bef">41.5</td><td class="v-s1">28.0</td><td class="v-s2">23.0</td><td style="text-align:center"><span class="dpill">↑ 45%</span></td></tr>
+      <tr><td>Best finish</td><td class="muted-val">24th</td><td class="muted-val">10th</td><td class="muted-val">10th</td><td style="text-align:center"><span class="dpill">↑ 14 places</span></td></tr>
+      <tr><td>Worst finish (floor)</td><td class="v-bef">60th</td><td class="v-s1">43rd</td><td class="v-s2">35th</td><td style="text-align:center"><span class="dpill">↑ 42%</span></td></tr>
+      <tr><td>Top-32 race rate</td><td class="v-bef">25.0%</td><td class="v-s1">63.6%</td><td class="v-s2">75.0%</td><td style="text-align:center"><span class="dpill">3×</span></td></tr>
+      <tr><td>Top-20 race ranking</td><td class="v-bef">8.3%</td><td class="v-s1">18.2%</td><td class="v-s2">50.0%</td><td style="text-align:center"><span class="dpill">6×</span></td></tr>
+      <tr><td>Top-10 race rate</td><td class="v-bef">0.0%</td><td class="v-s1">9.1%</td><td class="v-s2">12.5%</td><td style="text-align:center"><span class="dpill">↑ 12.5pp</span></td></tr>
+
+      <tr class="sec-row"><td colspan="5">Qualification</td></tr>
+      <tr><td>Events</td><td class="muted-val">7</td><td>9</td><td>7</td><td class="muted-val" style="text-align:center;font-size:11px">—</td></tr>
+      <tr><td>Average qualification seed</td><td class="v-bef">43.1</td><td class="v-s1">26.9</td><td class="v-s2">21.3</td><td style="text-align:center"><span class="dpill">↑ 51%</span></td></tr>
+      <tr><td>Median qualification seed</td><td class="v-bef">40.0</td><td class="v-s1">24.0</td><td class="v-s2">19.0</td><td style="text-align:center"><span class="dpill">↑ 53%</span></td></tr>
+      <tr><td>Best qualification</td><td class="muted-val">30th</td><td class="muted-val">10th</td><td class="muted-val">10th</td><td style="text-align:center"><span class="dpill">↑ 20 places</span></td></tr>
+      <tr><td>Worst qualification</td><td class="v-bef">55th</td><td class="v-s1">43rd</td><td class="v-s2">35th</td><td style="text-align:center"><span class="dpill">↑ 36%</span></td></tr>
+      <tr><td>Qualification rate (Top-32)</td><td class="v-bef">14.3%</td><td class="v-s1">66.7%</td><td class="v-s2">71.4%</td><td style="text-align:center"><span class="dpill">5×</span></td></tr>
+      <tr><td>Qualification rate (Top-20)</td><td class="v-bef">0.0%</td><td class="v-s1">22.2%</td><td class="v-s2">71.4%</td><td style="text-align:center"><span class="dpill">↑ 71.4pp</span></td></tr>
+      <tr><td>Avg DNQ miss margin</td><td class="v-bef">13.3</td><td class="v-s1">8.0</td><td class="v-s2">2.5</td><td style="text-align:center"><span class="dpill">↑ 81%</span></td></tr>
+
+      <tr class="sec-row"><td colspan="5">Team Events</td></tr>
+      <tr><td>Team appearances</td><td class="v-bef">2</td><td class="v-s1">3</td><td class="v-s2">2</td><td class="muted-val" style="text-align:center;font-size:11px">—</td></tr>
+      <tr><td>Best team result</td><td class="v-bef">1st 🥇 (Les Deux Alpes)</td><td class="v-s1">2nd (Erzurum WC)</td><td class="v-s2">1st 🥇 Olympic</td><td class="muted-val" style="text-align:center;font-size:11px">—</td></tr>
+      <tr><td>Team results summary</td><td style="color:var(--s0);font-weight:600">1st, 5th</td><td style="color:var(--s1);font-weight:600">2nd, 4th, 12th</td><td style="color:var(--s2);font-weight:600">1st, 1st</td><td class="muted-val" style="text-align:center;font-size:11px">—</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <!-- All Races section (merged from former All Races tab) -->
+  <div class="tbl-section" style="margin-top:24px">All Races — Full Event Log</div>
+  <p style="font-size:12px;color:var(--muted);margin:6px 0 10px">Select a season to view the full race-by-race log.</p>
+  <div class="subnav">
+    <button class="sub-btn active s0" onclick="switchSub('r2324',this,0)">2023–24 · Pre-Work</button>
+    <button class="sub-btn s1"        onclick="switchSub('r2425',this,1)">2024–25 · Season 1</button>
+    <button class="sub-btn s2"        onclick="switchSub('r2526',this,2)">2025–26 · Season 2</button>
+  </div>
+
+  <!-- 2023-24 -->
+  <div id="sub-r2324" class="sub-panel active">
+    <div class="sstat-row">
+      <div class="sstat"><div class="sv" style="color:var(--s0)">18</div><div class="sl">Events</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s0)">44.4</div><div class="sl">Avg Indiv Finish</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s0)">24th</div><div class="sl">Best Indiv</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--gold)">1st 🥇</div><div class="sl">Best Team</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--red)">90%</div><div class="sl">DNQ Rate</div></div>
+    </div>
+    <div class="table-wrap"><table class="rt">
+      <thead><tr><th>Date</th><th>Location</th><th>Event</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr class="r-team"><td>Dec 02</td><td>Les Deux Alpes</td><td class="et">World Cup · Team</td><td><span class="rbadge rb-gold">1st 🥇 Team</span></td></tr>
+        <tr class="r-team"><td>Dec 17</td><td>Cervinia</td><td class="et">World Cup · Team</td><td><span class="rbadge rb-team">5th Team</span></td></tr>
+        <tr class="r-dnq"><td>Jan 25</td><td>St. Moritz</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">55th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Jan 26</td><td>St. Moritz</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">55th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Feb 02</td><td>Gudauri</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">40th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Feb 03</td><td>Gudauri</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">40th DNQ</span></td></tr>
+        <tr class="r-top16"><td>Feb 04</td><td>Gudauri</td><td class="et">World Cup</td><td><span class="rbadge rb-q">24th</span></td></tr>
+        <tr class="r-dnq"><td>Mar 01</td><td>Sierra Nevada</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">51st DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 02</td><td>Sierra Nevada</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">50th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 03</td><td>Sierra Nevada</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">60th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 08</td><td>Cortina</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">54th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 09</td><td>Cortina</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">54th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 15</td><td>Montafon</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">37th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 16</td><td>Montafon</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">37th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 17</td><td>Montafon</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">46th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 22</td><td>Mt. St. Anne</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">35th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 23</td><td>Mt. St. Anne</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">35th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 24</td><td>Mt. St. Anne</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">43rd DNQ</span></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <!-- 2024-25 -->
+  <div id="sub-r2425" class="sub-panel">
+    <div class="sstat-row">
+      <div class="sstat"><div class="sv" style="color:var(--s1)">25</div><div class="sl">Events</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s1)">27.7</div><div class="sl">Avg (WC/WCh)</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--gold)">1st 🥇</div><div class="sl">Best (EC)</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s1)">10th</div><div class="sl">Best WC/WCh</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s1)">64%</div><div class="sl">Top-32</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s1)">18%</div><div class="sl">Top-20</div></div>
+    </div>
+    <div class="table-wrap"><table class="rt">
+      <thead><tr><th>Date</th><th>Location</th><th>Event</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr class="r-dnq"><td>Dec 13</td><td>Cervinia</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">43rd DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Dec 14</td><td>Cervinia</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">43rd DNQ</span></td></tr>
+        <tr><td>Jan 31</td><td>Beidahu</td><td class="et">Qualification</td><td><span class="rbadge rb-q">24th</span></td></tr>
+        <tr class="r-top16"><td>Feb 01</td><td>Beidahu</td><td class="et">World Cup</td><td><span class="rbadge rb-q">28th</span></td></tr>
+        <tr><td>Feb 02</td><td>Beidahu</td><td class="et">Qualification</td><td><span class="rbadge rb-q">21st</span></td></tr>
+        <tr class="r-top16"><td>Feb 02</td><td>Beidahu</td><td class="et">World Cup</td><td><span class="rbadge rb-q">21st</span></td></tr>
+        <tr class="r-top20"><td>Feb 08</td><td>Reiteralm</td><td class="et">Europa Cup</td><td><span class="rbadge rb-top20">19th</span></td></tr>
+        <tr class="r-top5"><td>Feb 09</td><td>Reiteralm</td><td class="et">Europa Cup</td><td><span class="rbadge rb-gold">1st 🥇 (Europa Cup)</span></td></tr>
+        <tr class="r-dnq"><td>Feb 15</td><td>Cortina</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">37th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Feb 15</td><td>Cortina</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">37th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Feb 28</td><td>Erzurum</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">40th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 01</td><td>Erzurum</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">40th DNQ</span></td></tr>
+        <tr class="r-team"><td>Mar 02</td><td>Erzurum</td><td class="et">World Cup · Team</td><td><span class="rbadge rb-team">2nd Team 🥈</span></td></tr>
+        <tr><td>Mar 07</td><td>Gudauri</td><td class="et">Qualification</td><td><span class="rbadge rb-q">22nd</span></td></tr>
+        <tr class="r-top16"><td>Mar 08</td><td>Gudauri</td><td class="et">World Cup</td><td><span class="rbadge rb-q">28th</span></td></tr>
+        <tr class="r-dnq"><td>Mar 09</td><td>Gudauri</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">43rd DNQ</span></td></tr>
+        <tr><td>Mar 20</td><td>Montafon</td><td class="et">Qualification</td><td><span class="rbadge rb-q">25th</span></td></tr>
+        <tr class="r-top16"><td>Mar 21</td><td>Montafon</td><td class="et">World Cup</td><td><span class="rbadge rb-q">21st</span></td></tr>
+        <tr class="r-team"><td>Mar 22</td><td>Montafon</td><td class="et">World Cup · Team</td><td><span class="rbadge rb-team">4th Team</span></td></tr>
+        <tr class="r-top10"><td>Mar 27</td><td>Engadin</td><td class="et">Qualification</td><td><span class="rbadge rb-top10">10th</span></td></tr>
+        <tr class="r-top10"><td>Mar 28</td><td>Engadin</td><td class="et">World Champs</td><td><span class="rbadge rb-top10">10th</span></td></tr>
+        <tr class="r-team"><td>Mar 29</td><td>Engadin</td><td class="et">World Champs · Team</td><td><span class="rbadge rb-team">12th Team</span></td></tr>
+        <tr class="r-top20"><td>Apr 04</td><td>Mt. St. Anne</td><td class="et">Qualification</td><td><span class="rbadge rb-top20">20th</span></td></tr>
+        <tr class="r-top10"><td>Apr 05</td><td>Mt. St. Anne</td><td class="et">World Cup</td><td><span class="rbadge rb-top10">11th</span></td></tr>
+        <tr class="r-top16"><td>Apr 06</td><td>Mt. St. Anne</td><td class="et">World Cup</td><td><span class="rbadge rb-q">23rd</span></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <!-- 2025-26 -->
+  <div id="sub-r2526" class="sub-panel">
+    <div class="sstat-row">
+      <div class="sstat"><div class="sv" style="color:var(--s2)">17</div><div class="sl">Events</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s2)">23.0</div><div class="sl">Avg Race</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--gold)">🥇 Olympic</div><div class="sl">Team Gold</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s2)">10th</div><div class="sl">Best Indiv.</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s2)">75%</div><div class="sl">Top-32</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s2)">50%</div><div class="sl">Top-20</div></div>
+    </div>
+    <div class="table-wrap"><table class="rt">
+      <thead><tr><th>Date</th><th>Location</th><th>Event</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr class="r-dnq"><td>Dec 12</td><td>Cervinia</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">34th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Dec 13</td><td>Cervinia</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">34th DNQ</span></td></tr>
+        <tr class="r-team"><td>Dec 14</td><td>Cervinia</td><td class="et">World Cup · Team</td><td><span class="rbadge rb-gold">1st Team 🥇</span></td></tr>
+        <tr class="r-top16"><td>Jan 16</td><td>Dongbei</td><td class="et">Qualification</td><td><span class="rbadge rb-top16">14th</span></td></tr>
+        <tr class="r-top20"><td>Jan 17</td><td>Dongbei</td><td class="et">World Cup</td><td><span class="rbadge rb-top20">17th</span></td></tr>
+        <tr class="r-dnq"><td>Jan 18</td><td>Dongbei</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">35th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Jan 18</td><td>Dongbei</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">35th DNQ</span></td></tr>
+        <tr class="r-top10"><td>Feb 12</td><td>Livigno</td><td class="et">Olympic · Qualification</td><td><span class="rbadge rb-top10">10th</span></td></tr>
+        <tr class="r-top16"><td>Feb 12</td><td>Livigno</td><td class="et">Olympic Games</td><td><span class="rbadge rb-q">26th</span></td></tr>
+        <tr class="r-team"><td>Feb 15</td><td>Livigno</td><td class="et">Olympic · Mixed Team SBX</td><td><span class="rbadge rb-gold">1st 🥇 Olympic Gold</span></td></tr>
+        <tr class="r-top20"><td>Mar 06</td><td>Erzurum</td><td class="et">Qualification</td><td><span class="rbadge rb-top20">17th</span></td></tr>
+        <tr class="r-top10"><td>Mar 06</td><td>Erzurum</td><td class="et">World Cup</td><td><span class="rbadge rb-top10">10th</span></td></tr>
+        <tr class="r-top16"><td>Mar 08</td><td>Erzurum</td><td class="et">World Cup</td><td><span class="rbadge rb-q">27th</span></td></tr>
+        <tr class="r-top20"><td>Mar 14</td><td>Montafon</td><td class="et">Qualification</td><td><span class="rbadge rb-top20">19th</span></td></tr>
+        <tr class="r-top20"><td>Mar 15</td><td>Montafon</td><td class="et">World Cup</td><td><span class="rbadge rb-top20">20th</span></td></tr>
+        <tr class="r-top20"><td>Mar 27</td><td>Mt. St. Anne</td><td class="et">Qualification</td><td><span class="rbadge rb-top20">20th</span></td></tr>
+        <tr class="r-top16"><td>Mar 28</td><td>Mt. St. Anne</td><td class="et">World Cup</td><td><span class="rbadge rb-top16">15th</span></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+</div><!-- /season -->
+
+
+<!-- ═══════════════════════════════ TAB: CHARTS ═══════════ -->
+<div id="tab-charts" class="tab">
+
+  <div class="two-col">
+    <div class="chart-card" style="margin-bottom:0">
+      <h3>World Cup Standing Rank — All Seasons</h3>
+      <div class="sub">FIS official standings · Lower rank = better · 49th → 21st over five seasons · ↑ 57% rank elevation</div>
+      <div class="chart-wrap" style="height:260px"><canvas id="wcRankChart"></canvas></div>
+    </div>
+    <div class="chart-card" style="margin-bottom:0">
+      <h3>World Cup Points — All Seasons</h3>
+      <div class="sub">FIS official points total per season · Season 1 → Season 2: +169% from 2023–24 baseline</div>
+      <div class="chart-wrap" style="height:260px"><canvas id="wcPointsChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Pressure Index — Performance by Event Tier</h3>
+    <div class="sub">Average race position split by event level. Lower = better. Tracks whether performance holds at maximum pressure.</div>
+    <div class="chart-wrap" style="height:250px"><canvas id="pressureChart"></canvas></div>
+  </div>
+
+  <div class="two-col">
+    <div class="chart-card" style="margin-bottom:0">
+      <h3>Qualification Rates</h3>
+      <div class="sub">Top-20 = first-round direct qualifier. 21–32 = second round. 0% to 71.4% Top-20 is the headline number.</div>
+      <div class="chart-wrap" style="height:300px"><canvas id="qualTierChart"></canvas></div>
+    </div>
+    <div class="chart-card" style="margin-bottom:0">
+      <h3>Race Finish Rates by Cutoff</h3>
+      <div class="sub">Percentages only — different season lengths (12 / 11 / 8 races) make raw counts misleading</div>
+      <div class="chart-wrap" style="height:300px"><canvas id="tierChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Avg Qualification Seed vs Avg Race Finish</h3>
+    <div class="sub">Both metrics improving each season. Gap between qual seed and race finish = where bracket variance costs positions.</div>
+    <div class="chart-wrap" style="height:240px"><canvas id="ovQualRaceChart"></canvas></div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Race-by-Race Results</h3>
+    <div class="sub">Individual races chronologically · Y-axis inverted (1st at top) · Dashed red = 32nd place DNQ cutoff</div>
+    <div class="chart-wrap" style="height:290px"><canvas id="raceChart"></canvas></div>
+  </div>
+
+  <div class="two-col">
+    <div class="chart-card">
+      <h3>Qualification Progression</h3>
+      <div class="sub">Solo time trial — athlete vs. course only. The purest signal in SBX.</div>
+      <div class="chart-wrap" style="height:250px"><canvas id="qualChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>Elite Performance Stabilization</h3>
+      <div class="sub">Linear regression on qual positions. Negative slope = training block working mid-season.</div>
+      <div class="chart-wrap" style="height:250px"><canvas id="trendChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Venue Performance Map</h3>
+    <div class="sub">Longer bar = better placement · Labels show actual finish position · Track conditions vary year to year</div>
+    <div class="chart-wrap venue-chart-wrap" style="height:310px"><canvas id="venueChart"></canvas></div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Consistency Distribution</h3>
+    <div class="sub">All race + qual results per season · Points left of the red line = inside the field</div>
+    <div class="chart-wrap" style="height:250px"><canvas id="distChart"></canvas></div>
+  </div>
+
+  <div class="chart-card">
+    <h3>Shared-Venue Qualification — Season 1 vs Season 2</h3>
+    <div class="sub">Venues where he competed in both seasons. Higher on chart = better. Line length = how much he improved at that venue.</div>
+    <div class="chart-wrap dumbbell-chart-wrap" style="height:280px"><canvas id="dumbbellChart"></canvas></div>
+  </div>
+
+
+</div><!-- /charts -->
+
+
+<!-- ═══════════════════════════════ TAB: ALL RACES (removed — content in Season Data) ═══ -->
+<div id="tab-races" class="tab" style="display:none!important">
+
+  <div class="subnav">
+    <button class="sub-btn active s0" onclick="switchSub('r2324',this,0)">2023–24 · Pre-Work</button>
+    <button class="sub-btn s1"        onclick="switchSub('r2425',this,1)">2024–25 · Season 1</button>
+    <button class="sub-btn s2"        onclick="switchSub('r2526',this,2)">2025–26 · Season 2</button>
+  </div>
+
+  <!-- 2023-24 -->
+  <div id="sub-r2324-old" class="sub-panel active">
+    <div class="sstat-row">
+      <div class="sstat"><div class="sv" style="color:var(--s0)">18</div><div class="sl">Events</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s0)">44.4</div><div class="sl">Avg Indiv Finish</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s0)">24th</div><div class="sl">Best Indiv</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--gold)">1st 🥇</div><div class="sl">Best Team</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--red)">90%</div><div class="sl">DNQ Rate</div></div>
+    </div>
+    <div class="table-wrap"><table class="rt">
+      <thead><tr><th>Date</th><th>Location</th><th>Event</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr class="r-team"><td>Dec 02</td><td>Les Deux Alpes</td><td class="et">World Cup · Team</td><td><span class="rbadge rb-gold">1st 🥇 Team</span></td></tr>
+        <tr class="r-team"><td>Dec 17</td><td>Cervinia</td><td class="et">World Cup · Team</td><td><span class="rbadge rb-team">5th Team</span></td></tr>
+        <tr class="r-dnq"><td>Jan 25</td><td>St. Moritz</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">55th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Jan 26</td><td>St. Moritz</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">55th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Feb 02</td><td>Gudauri</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">40th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Feb 03</td><td>Gudauri</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">40th DNQ</span></td></tr>
+        <tr class="r-top16"><td>Feb 04</td><td>Gudauri</td><td class="et">World Cup</td><td><span class="rbadge rb-q">24th</span></td></tr>
+        <tr class="r-dnq"><td>Mar 01</td><td>Sierra Nevada</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">51st DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 02</td><td>Sierra Nevada</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">50th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 03</td><td>Sierra Nevada</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">60th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 08</td><td>Cortina</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">54th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 09</td><td>Cortina</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">54th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 15</td><td>Montafon</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">37th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 16</td><td>Montafon</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">37th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 17</td><td>Montafon</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">46th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 22</td><td>Mt. St. Anne</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">35th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 23</td><td>Mt. St. Anne</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">35th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 24</td><td>Mt. St. Anne</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">43rd DNQ</span></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <!-- 2024-25 -->
+  <div id="sub-r2425" class="sub-panel">
+    <div class="sstat-row">
+      <div class="sstat"><div class="sv" style="color:var(--s1)">25</div><div class="sl">Events</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s1)">27.7</div><div class="sl">Avg (WC/WCh)</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--gold)">1st 🥇</div><div class="sl">Best (EC)</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s1)">10th</div><div class="sl">Best WC/WCh</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s1)">64%</div><div class="sl">Top-32</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s1)">18%</div><div class="sl">Top-20</div></div>
+    </div>
+    <div class="table-wrap"><table class="rt">
+      <thead><tr><th>Date</th><th>Location</th><th>Event</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr class="r-dnq"><td>Dec 13</td><td>Cervinia</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">43rd DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Dec 14</td><td>Cervinia</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">43rd DNQ</span></td></tr>
+        <tr><td>Jan 31</td><td>Beidahu</td><td class="et">Qualification</td><td><span class="rbadge rb-q">24th</span></td></tr>
+        <tr class="r-top16"><td>Feb 01</td><td>Beidahu</td><td class="et">World Cup</td><td><span class="rbadge rb-q">28th</span></td></tr>
+        <tr><td>Feb 02</td><td>Beidahu</td><td class="et">Qualification</td><td><span class="rbadge rb-q">21st</span></td></tr>
+        <tr class="r-top16"><td>Feb 02</td><td>Beidahu</td><td class="et">World Cup</td><td><span class="rbadge rb-q">21st</span></td></tr>
+        <tr class="r-top20"><td>Feb 08</td><td>Reiteralm</td><td class="et">Europa Cup</td><td><span class="rbadge rb-top20">19th</span></td></tr>
+        <tr class="r-top5"><td>Feb 09</td><td>Reiteralm</td><td class="et">Europa Cup</td><td><span class="rbadge rb-gold">1st 🥇 (Europa Cup)</span></td></tr>
+        <tr class="r-dnq"><td>Feb 15</td><td>Cortina</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">37th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Feb 15</td><td>Cortina</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">37th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Feb 28</td><td>Erzurum</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">40th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Mar 01</td><td>Erzurum</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">40th DNQ</span></td></tr>
+        <tr class="r-team"><td>Mar 02</td><td>Erzurum</td><td class="et">World Cup · Team</td><td><span class="rbadge rb-team">2nd Team 🥈</span></td></tr>
+        <tr><td>Mar 07</td><td>Gudauri</td><td class="et">Qualification</td><td><span class="rbadge rb-q">22nd</span></td></tr>
+        <tr class="r-top16"><td>Mar 08</td><td>Gudauri</td><td class="et">World Cup</td><td><span class="rbadge rb-q">28th</span></td></tr>
+        <tr class="r-dnq"><td>Mar 09</td><td>Gudauri</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">43rd DNQ</span></td></tr>
+        <tr><td>Mar 20</td><td>Montafon</td><td class="et">Qualification</td><td><span class="rbadge rb-q">25th</span></td></tr>
+        <tr class="r-top16"><td>Mar 21</td><td>Montafon</td><td class="et">World Cup</td><td><span class="rbadge rb-q">21st</span></td></tr>
+        <tr class="r-team"><td>Mar 22</td><td>Montafon</td><td class="et">World Cup · Team</td><td><span class="rbadge rb-team">4th Team</span></td></tr>
+        <tr class="r-top10"><td>Mar 27</td><td>Engadin</td><td class="et">Qualification</td><td><span class="rbadge rb-top10">10th</span></td></tr>
+        <tr class="r-top10"><td>Mar 28</td><td>Engadin</td><td class="et">World Champs</td><td><span class="rbadge rb-top10">10th</span></td></tr>
+        <tr class="r-team"><td>Mar 29</td><td>Engadin</td><td class="et">World Champs · Team</td><td><span class="rbadge rb-team">12th Team</span></td></tr>
+        <tr class="r-top20"><td>Apr 04</td><td>Mt. St. Anne</td><td class="et">Qualification</td><td><span class="rbadge rb-top20">20th</span></td></tr>
+        <tr class="r-top10"><td>Apr 05</td><td>Mt. St. Anne</td><td class="et">World Cup</td><td><span class="rbadge rb-top10">11th</span></td></tr>
+        <tr class="r-top16"><td>Apr 06</td><td>Mt. St. Anne</td><td class="et">World Cup</td><td><span class="rbadge rb-q">23rd</span></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+  <!-- 2025-26 -->
+  <div id="sub-r2526" class="sub-panel">
+    <div class="sstat-row">
+      <div class="sstat"><div class="sv" style="color:var(--s2)">17</div><div class="sl">Events</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s2)">23.0</div><div class="sl">Avg Race</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--gold)">🥇 Olympic</div><div class="sl">Team Gold</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s2)">10th</div><div class="sl">Best Indiv.</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s2)">75%</div><div class="sl">Top-32</div></div>
+      <div class="sstat"><div class="sv" style="color:var(--s2)">50%</div><div class="sl">Top-20</div></div>
+    </div>
+    <div class="table-wrap"><table class="rt">
+      <thead><tr><th>Date</th><th>Location</th><th>Event</th><th>Result</th></tr></thead>
+      <tbody>
+        <tr class="r-dnq"><td>Dec 12</td><td>Cervinia</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">34th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Dec 13</td><td>Cervinia</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">34th DNQ</span></td></tr>
+        <tr class="r-team"><td>Dec 14</td><td>Cervinia</td><td class="et">World Cup · Team</td><td><span class="rbadge rb-gold">1st Team 🥇</span></td></tr>
+        <tr class="r-top16"><td>Jan 16</td><td>Dongbei</td><td class="et">Qualification</td><td><span class="rbadge rb-top16">14th</span></td></tr>
+        <tr class="r-top20"><td>Jan 17</td><td>Dongbei</td><td class="et">World Cup</td><td><span class="rbadge rb-top20">17th</span></td></tr>
+        <tr class="r-dnq"><td>Jan 18</td><td>Dongbei</td><td class="et">Qualification</td><td><span class="rbadge rb-dnq">35th DNQ</span></td></tr>
+        <tr class="r-dnq"><td>Jan 18</td><td>Dongbei</td><td class="et">World Cup</td><td><span class="rbadge rb-dnq">35th DNQ</span></td></tr>
+        <tr class="r-top10"><td>Feb 12</td><td>Livigno</td><td class="et">Olympic · Qualification</td><td><span class="rbadge rb-top10">10th</span></td></tr>
+        <tr class="r-top16"><td>Feb 12</td><td>Livigno</td><td class="et">Olympic Games</td><td><span class="rbadge rb-q">26th</span></td></tr>
+        <tr class="r-team"><td>Feb 15</td><td>Livigno</td><td class="et">Olympic · Mixed Team SBX</td><td><span class="rbadge rb-gold">1st 🥇 Olympic Gold</span></td></tr>
+        <tr class="r-top20"><td>Mar 06</td><td>Erzurum</td><td class="et">Qualification</td><td><span class="rbadge rb-top20">17th</span></td></tr>
+        <tr class="r-top10"><td>Mar 06</td><td>Erzurum</td><td class="et">World Cup</td><td><span class="rbadge rb-top10">10th</span></td></tr>
+        <tr class="r-top16"><td>Mar 08</td><td>Erzurum</td><td class="et">World Cup</td><td><span class="rbadge rb-q">27th</span></td></tr>
+        <tr class="r-top20"><td>Mar 14</td><td>Montafon</td><td class="et">Qualification</td><td><span class="rbadge rb-top20">19th</span></td></tr>
+        <tr class="r-top20"><td>Mar 15</td><td>Montafon</td><td class="et">World Cup</td><td><span class="rbadge rb-top20">20th</span></td></tr>
+        <tr class="r-top20"><td>Mar 27</td><td>Mt. St. Anne</td><td class="et">Qualification</td><td><span class="rbadge rb-top20">20th</span></td></tr>
+        <tr class="r-top16"><td>Mar 28</td><td>Mt. St. Anne</td><td class="et">World Cup</td><td><span class="rbadge rb-top16">15th</span></td></tr>
+      </tbody>
+    </table></div>
+  </div>
+
+</div><!-- /races -->
+
+
+<!-- TAB: TEAM RANKINGS removed -->
+<div id="tab-team" class="tab" style="display:none!important">
+
+  <!-- Season 0 Team Results (2023-24) -->
+  <div class="team-season-hdr">
+    <div class="team-season-badge tsb-s1" style="background:var(--s0-bg);color:var(--s0);border-color:#e0b070">2023–24 · Baseline</div>
+    <span style="font-size:13px;color:var(--muted)">2 team appearances · Best result: 1st place 🥇</span>
+  </div>
+
+  <div class="team-cards">
+    <div class="team-card gold-card">
+      <div class="tc-venue">Les Deux Alpes</div>
+      <div class="tc-date">December 2, 2023 · World Cup</div>
+      <div class="tc-result tc-gold">1st 🥇</div>
+      <div class="tc-event">Mixed Team SBX</div>
+      <div class="tc-context">World Cup gold. GB's first World Cup team win in Mixed Team SBX.</div>
+    </div>
+    <div class="team-card">
+      <div class="tc-venue">Cervinia</div>
+      <div class="tc-date">December 17, 2023 · World Cup</div>
+      <div class="tc-result tc-other">5th</div>
+      <div class="tc-event">Mixed Team SBX</div>
+      <div class="tc-context">Small final finish. Two team events, one gold — strong baseline for team SBX.</div>
+    </div>
+  </div>
+
+  <!-- Season 1 Team Results -->
+  <div class="team-season-hdr">
+    <div class="team-season-badge tsb-s1">2024–25 · Season 1</div>
+    <span style="font-size:13px;color:var(--muted)">3 team appearances · Best result: 2nd place</span>
+  </div>
+
+  <div class="team-cards">
+    <div class="team-card gold-card" style="border-color:#b0b8c8">
+      <div class="tc-venue">Erzurum</div>
+      <div class="tc-date">March 2, 2025 · World Cup</div>
+      <div class="tc-result tc-silver">2nd 🥈</div>
+      <div class="tc-event">Mixed Team SBX</div>
+      <div class="tc-context">World Cup final — beaten in the final round, arrived as genuine contenders.</div>
+    </div>
+    <div class="team-card">
+      <div class="tc-venue">Montafon</div>
+      <div class="tc-date">March 22, 2025 · World Cup</div>
+      <div class="tc-result tc-other">4th</div>
+      <div class="tc-event">Mixed Team SBX</div>
+      <div class="tc-context">Reached the small final. Fourth place at World Cup level.</div>
+    </div>
+    <div class="team-card">
+      <div class="tc-venue">Engadin</div>
+      <div class="tc-date">March 29, 2025 · World Champs</div>
+      <div class="tc-result tc-other">12th</div>
+      <div class="tc-event">Mixed Team SBX · World Champs</div>
+      <div class="tc-context">Mixed team event at World Champs. 12th overall.</div>
+    </div>
+  </div>
+
+  <!-- Season 2 Team Results -->
+  <div class="team-season-hdr">
+    <div class="team-season-badge tsb-s2">2025–26 · Season 2</div>
+    <span style="font-size:13px;color:var(--muted)">2 team appearances · Both results: 1st place 🥇</span>
+  </div>
+
+  <div class="team-cards">
+    <div class="team-card gold-card">
+      <div class="tc-venue">Cervinia</div>
+      <div class="tc-date">December 14, 2025 · World Cup</div>
+      <div class="tc-result tc-gold">1st 🥇</div>
+      <div class="tc-event">Mixed Team SBX</div>
+      <div class="tc-context">Season-opening World Cup win. Announced the team as title favourites heading into the Olympic season.</div>
+      <div style="margin-top:10px;border-top:1px solid #c6e8d4;padding-top:10px">
+        <div style="font-size:9px;font-weight:700;letter-spacing:.08em;color:#00875A;margin-bottom:6px">HUW'S WAVE POSITION BY ROUND</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">
+          <div style="text-align:center"><div style="font-size:15px;font-weight:800;color:var(--s2)">3rd</div><div style="font-size:10px;color:var(--muted)">Quarterfinal</div></div>
+          <div style="text-align:center"><div style="font-size:15px;font-weight:800;color:var(--s2)">3rd</div><div style="font-size:10px;color:var(--muted)">Semifinal</div></div>
+          <div style="text-align:center"><div style="font-size:15px;font-weight:800;color:var(--s2)">3rd</div><div style="font-size:10px;color:var(--muted)">Final</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="team-card gold-card">
+      <div class="tc-venue">Livigno / Milano-Cortina</div>
+      <div class="tc-date">February 15, 2026 · Olympic Games</div>
+      <div class="tc-result tc-gold">1st 🥇</div>
+      <div class="tc-event">Mixed Team SBX · Olympic Gold</div>
+      <div class="tc-context">Great Britain's first Olympic snowsports gold medal in 102 years. The defining result of the programme.</div>
+      <div style="margin-top:10px;border-top:1px solid #c6e8d4;padding-top:10px">
+        <div style="font-size:9px;font-weight:700;letter-spacing:.08em;color:#00875A;margin-bottom:6px">HUW'S WAVE POSITION BY ROUND</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px">
+          <div style="text-align:center"><div style="font-size:15px;font-weight:800;color:var(--s2)">3rd</div><div style="font-size:10px;color:var(--muted)">Quarterfinal</div></div>
+          <div style="text-align:center"><div style="font-size:15px;font-weight:800;color:var(--s2)">2nd</div><div style="font-size:10px;color:var(--muted)">Semifinal</div></div>
+          <div style="text-align:center"><div style="font-size:15px;font-weight:800;color:var(--s2)">2nd</div><div style="font-size:10px;color:var(--muted)">Final</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Key Individual Bracket Moment -->
+  <div class="team-season-hdr" style="margin-top:8px">
+    <div class="team-season-badge tsb-s2">Key Bracket Moment · Season 2 Individual</div>
+  </div>
+  <div style="background:var(--s2-bg);border:1.5px solid #00875A44;border-radius:10px;padding:18px 20px;margin-bottom:24px">
+    <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap">
+      <div style="flex:0 0 auto;text-align:center;min-width:80px">
+        <div style="font-size:32px;font-weight:900;color:var(--s2);line-height:1">1st</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">in heat</div>
+      </div>
+      <div style="flex:1;min-width:180px">
+        <div style="font-size:13px;font-weight:800;color:var(--text);margin-bottom:2px">Mt. St. Anne · March 28, 2026 · World Cup</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:8px">1/8th Final · Individual SBX</div>
+        <div style="font-size:12px;color:var(--text);line-height:1.55">First individual heat win of his career. Beat Alessandro Haemmerle — 2026 Olympic individual champion — in the 1/8th final.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- All-time team record table -->
+  <div class="team-record">
+    <div class="team-record-hdr">Complete Team SBX Record — All Seasons</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th><th>Venue</th><th>Season</th><th>Event</th><th>Result</th><th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Dec 02, 2023</td><td>Les Deux Alpes</td><td style="color:var(--s0);font-weight:700;font-size:11px">2023–24</td><td>World Cup</td><td class="res-gold">1st 🥇</td><td style="color:var(--muted);font-size:12px">First team race — first win</td>
+        </tr>
+        <tr>
+          <td>Dec 17, 2023</td><td>Cervinia</td><td style="color:var(--s0);font-weight:700;font-size:11px">2023–24</td><td>World Cup</td><td class="res-other">5th</td><td style="color:var(--muted);font-size:12px">Small final</td>
+        </tr>
+        <tr>
+          <td>Mar 02, 2025</td><td>Erzurum</td><td style="color:var(--s1);font-weight:700;font-size:11px">2024–25</td><td>World Cup</td><td class="res-silver">2nd 🥈</td><td style="color:var(--muted);font-size:12px">World Cup final</td>
+        </tr>
+        <tr>
+          <td>Mar 22, 2025</td><td>Montafon</td><td style="color:var(--s1);font-weight:700;font-size:11px">2024–25</td><td>World Cup</td><td class="res-other">4th</td><td style="color:var(--muted);font-size:12px">Small final</td>
+        </tr>
+        <tr>
+          <td>Mar 29, 2025</td><td>Engadin</td><td style="color:var(--s1);font-weight:700;font-size:11px">2024–25</td><td>World Champs</td><td class="res-other">12th</td><td style="color:var(--muted);font-size:12px">World Champs debut</td>
+        </tr>
+        <tr>
+          <td>Dec 14, 2025</td><td>Cervinia</td><td style="color:var(--s2);font-weight:700;font-size:11px">2025–26</td><td>World Cup</td><td class="res-gold">1st 🥇</td><td style="color:var(--muted);font-size:12px">Season-opening win</td>
+        </tr>
+        <tr>
+          <td>Feb 15, 2026</td><td>Livigno</td><td style="color:var(--s2);font-weight:700;font-size:11px">2025–26</td><td>Olympic Games</td><td class="res-gold">1st 🥇</td><td style="color:var(--muted);font-size:12px">Olympic Gold · 102 yrs GB first</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</div><!-- /team -->
+
+
+
+
+<div class="ftr">
+  <p>Grey Area Strategy Ltd · greyareatraining.com · Three-Season SBX Analysis 2023–26</p>
+  <span class="brand">Grey Area Strategy</span>
+  <p style="font-size:10px;color:var(--muted);letter-spacing:.08em;margin-top:4px">CONFIDENTIAL</p>
+</div>
+
+<script>
+// Register datalabels globally
+if (typeof ChartDataLabels !== 'undefined') {
+  Chart.register(ChartDataLabels);
+}
+
+// ── Overview charts (build immediately, not lazy) ─────────
+document.addEventListener('DOMContentLoaded', () => {
+  Chart.defaults.font.family = "-apple-system,'Helvetica Neue',Arial,sans-serif";
+
+  // Overview: Qualification finish rates by cutoff
+  new Chart(document.getElementById('ovQualTierChart'), {
+    type: 'bar',
+    data: {
+      labels: ['DNQ (>32nd)', 'Top-32', 'Top-20', 'Top-10'],
+      datasets: [
+        { label: '2023–24 Pre-Work',   data: [85.7, 14.3, 0, 0],       backgroundColor: '#C05600cc', borderRadius: 4 },
+        { label: '2024–25 Season 1', data: [33.3, 66.7, 22.2, 11.1], backgroundColor: '#0052CCcc', borderRadius: 4 },
+        { label: '2025–26 Season 2', data: [28.6, 71.4, 71.4, 14.3], backgroundColor: '#00875Acc', borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 20 } },
+      plugins: {
+        legend: { labels: { color: '#888890', font: { size: 10 }, boxWidth: 14 } },
+        datalabels: {
+          display: ctx => ctx.dataset.data[ctx.dataIndex] > 0,
+          color: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? '#374151' : '#fff',
+          font: { size: 9, weight: 'bold' },
+          formatter: v => v + '%',
+          anchor: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'end' : 'center',
+          align: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'top' : 'center',
+          offset: 2, clamp: false
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#888890', font: { size: 10 } }, grid: { display: false } },
+        y: { max: 105, ticks: { color: '#888890', callback: v => v <= 100 ? v + '%' : '' }, grid: { color: '#e8e8e4' } }
+      }
+    }
+  });
+
+  // Overview: Race finish rates by cutoff
+  new Chart(document.getElementById('ovTierChart'), {
+    type: 'bar',
+    data: {
+      labels: ['DNQ (>32nd)', 'Top-32', 'Top-20', 'Top-10'],
+      datasets: [
+        { label: '2023–24 Pre-Work',   data: [75, 25, 8.3, 0],       backgroundColor: '#C05600cc', borderRadius: 4 },
+        { label: '2024–25 Season 1', data: [36.4, 63.6, 18.2, 9.1], backgroundColor: '#0052CCcc', borderRadius: 4 },
+        { label: '2025–26 Season 2', data: [25, 75, 50, 12.5],      backgroundColor: '#00875Acc', borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 20 } },
+      plugins: {
+        legend: { labels: { color: '#888890', font: { size: 10 }, boxWidth: 14 } },
+        datalabels: {
+          display: ctx => ctx.dataset.data[ctx.dataIndex] > 0,
+          color: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? '#374151' : '#fff',
+          font: { size: 9, weight: 'bold' },
+          formatter: v => v + '%',
+          anchor: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'end' : 'center',
+          align: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'top' : 'center',
+          offset: 2,
+          clamp: false
+        }
+      },
+      scales: {
+        x: { ticks: { color: '#888890', font: { size: 10 } }, grid: { display: false } },
+        y: { max: 105, ticks: { color: '#888890', callback: v => v <= 100 ? v + '%' : '' }, grid: { color: '#e8e8e4' } }
+      }
+    }
+  });
+
+});
+
+// ── Navigation ────────────────────────────────────────────
+function switchTab(id, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  btn.classList.add('active');
+  if (id === 'charts' && !window.chartsBuilt) buildCharts();
+}
+async function printAll() {
+  const btn = document.querySelector('.pdf-btn');
+  btn.textContent = '⏳ Generating…';
+  btn.disabled = true;
+
+  // Disable Chart.js animations so html2canvas captures fully-drawn charts
+  Chart.defaults.animation = false;
+
+  // Build Charts tab if not yet initialized
+  if (!window.chartsBuilt) buildCharts();
+
+  // Show all tabs
+  const TAB_IDS = ['tab-overview','tab-charts','tab-season'];
+  const hiddenTabs = [];
+  TAB_IDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (!el.classList.contains('active')) { hiddenTabs.push(el); el.style.display = 'block'; }
+  });
+
+  // Show all sub-panels
+  const hiddenPanels = [];
+  document.querySelectorAll('.sub-panel').forEach(p => {
+    if (!p.classList.contains('active')) { hiddenPanels.push(p); p.style.display = 'block'; }
+  });
+
+  // Show print header, hide chrome
+  document.getElementById('print-header').style.display = 'block';
+  const chrome = document.querySelectorAll('.nav,.hint-bar,.hdr,.ftr,.subnav');
+  chrome.forEach(el => el.style.display = 'none');
+
+  // ── PDF layout prep: force desktop stacking & uniform chart heights ──
+  // html2canvas does NOT apply @media print rules, so we do it manually.
+  const twoColEls = document.querySelectorAll('.two-col');
+  twoColEls.forEach(el => { el.style.display = 'block'; });
+
+  // Resize every chart-wrap to a consistent 200px and redraw its Chart.js instance
+  const chartWrapSnapshot = [];
+  TAB_IDS.forEach(id => {
+    const tab = document.getElementById(id);
+    if (!tab) return;
+    tab.querySelectorAll('.chart-wrap').forEach(wrap => {
+      chartWrapSnapshot.push({ el: wrap, h: wrap.style.height });
+      wrap.style.height = '200px';
+      const canvas = wrap.querySelector('canvas');
+      if (!canvas) return;
+      const ch = Chart.getChart(canvas);
+      if (ch) { ch.resize(); ch.update('none'); }
+    });
+  });
+
+  // Two-pass repaint: first tick lets layout settle, second flushes canvas pixels
+  await new Promise(r => setTimeout(r, 300));
+  TAB_IDS.forEach(id => {
+    const tab = document.getElementById(id);
+    if (!tab) return;
+    tab.querySelectorAll('canvas').forEach(c => { const ch = Chart.getChart(c); if (ch) ch.update('none'); });
+  });
+  await new Promise(r => setTimeout(r, 800));
+
+  const opt = {
+    margin:      [0.4, 0.4, 0.4, 0.4],
+    filename:    'Huw_Nightingale_Performance_Audit.pdf',
+    image:       { type: 'jpeg', quality: 0.97 },
+    html2canvas: {
+      scale: 1.8,
+      useCORS: true,
+      logging: false,
+      letterRendering: true,
+      scrollY: 0,
+      windowWidth: 1400   // force desktop viewport width — prevents grid collapse
+    },
+    jsPDF:       { unit: 'in', format: 'a4', orientation: 'landscape' },
+    pagebreak:   { mode: ['avoid-all'], avoid: ['.chart-card','.hero-stat','.arc-col','.key-moment'] }
+  };
+
+  const restore = () => {
+    hiddenTabs.forEach(el => el.style.display = '');
+    hiddenPanels.forEach(el => el.style.display = '');
+    document.getElementById('print-header').style.display = 'none';
+    chrome.forEach(el => el.style.display = '');
+    // Restore two-col layout
+    twoColEls.forEach(el => { el.style.display = ''; });
+    // Restore chart heights and redraw
+    chartWrapSnapshot.forEach(({ el, h }) => { el.style.height = h; });
+    TAB_IDS.forEach(id => {
+      const tab = document.getElementById(id);
+      if (!tab) return;
+      tab.querySelectorAll('canvas').forEach(c => { const ch = Chart.getChart(c); if (ch) { ch.resize(); ch.update('none'); } });
+    });
+    Chart.defaults.animation = { duration: 400 };
+    btn.textContent = '⬇ Download PDF';
+    btn.disabled = false;
+  };
+
+  try {
+    if (typeof html2pdf === 'undefined') throw new Error('html2pdf not loaded');
+    await html2pdf().set(opt).from(document.body).save();
+    restore();
+  } catch(e) {
+    console.warn('html2pdf failed, falling back to window.print()', e);
+    restore();
+    // Brief pause then print dialog
+    await new Promise(r => setTimeout(r, 100));
+    window.print();
+  }
+}
+
+function switchSub(id, btn, idx) {
+  document.querySelectorAll('.sub-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sub-btn').forEach(b => b.classList.remove('active','s0','s1','s2'));
+  document.getElementById('sub-' + id).classList.add('active');
+  btn.classList.add('active', 's' + idx);
+}
+
+// ── Colors ────────────────────────────────────────────────
+const C_BEF  = '#C05600';
+const C_S1   = '#0052CC';
+const C_S2   = '#00875A';
+const C_RED  = '#c03030';
+const C_GRID = '#e8e8e4';
+const C_TEXT = '#888890';
+
+// ── Data ─────────────────────────────────────────────────
+const races2324 = [55,40,24,60,50,54,37,46,35,43,35,43];
+const races2425 = [43,10,21,43,28,40,37,21,28,11,23];
+const races2526 = [34,35,17,26,10,27,20,15];
+
+const quals2324 = [55,40,30,51,54,37,35]; // 7 events, avg 43.1 ✓
+const quals2425 = [43,24,21,37,40,22,25,10,20];
+const quals2526 = [34,14,35,10,17,19,20];
+
+function linReg(data) {
+  const n = data.length;
+  const xMean = (n - 1) / 2;
+  const yMean = data.reduce((a, b) => a + b, 0) / n;
+  let num = 0, den = 0;
+  data.forEach((y, x) => { num += (x - xMean) * (y - yMean); den += (x - xMean) ** 2; });
+  const m = den ? num / den : 0;
+  const b = yMean - m * xMean;
+  return data.map((_, x) => +(m * x + b).toFixed(1));
+}
+
+// DNQ line plugin
+const dnqPlugin = {
+  id: 'dnqLine',
+  afterDraw(chart) {
+    if (!chart.scales.y) return;
+    const { ctx, chartArea, scales } = chart;
+    const y = scales.y.getPixelForValue(32);
+    if (y < chartArea.top || y > chartArea.bottom) return;
+    ctx.save();
+    ctx.strokeStyle = C_RED; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4]);
+    ctx.beginPath(); ctx.moveTo(chartArea.left, y); ctx.lineTo(chartArea.right, y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = C_RED;
+    ctx.font = 'bold 9px -apple-system,sans-serif';
+    ctx.fillText('DNQ line', chartArea.right - 52, y - 5);
+    ctx.restore();
+  }
+};
+
+const baseScales = (reverse=false, max=65) => ({
+  x: { ticks: { color: C_TEXT, font: { size: 10 } }, grid: { color: C_GRID } },
+  y: {
+    reverse,
+    max,
+    ticks: { color: C_TEXT, font: { size: 10 }, callback: v => v === 1 ? '1st' : v + 'th' },
+    grid: { color: C_GRID }
+  }
+});
+
+// No datalabels by default
+const noDL = { datalabels: { display: false } };
+
+function buildCharts() {
+  window.chartsBuilt = true;
+  Chart.defaults.font.family = "-apple-system,'Helvetica Neue',Arial,sans-serif";
+
+  // ── World Cup Standing Rank (FIS official, 5 seasons) ─────
+  const wcYears = ['2021–22', '2022–23', '2023–24', '2024–25', '2025–26'];
+  const wcRanks = [49, 45, 44, 35, 21];
+  const wcRankColors = ['#C0560088','#C0560088', C_BEF+'cc', C_S1+'cc', C_S2+'cc'];
+  const wcRankPctPlugin = {
+    id: 'wcRankPct',
+    afterDatasetsDraw(chart) {
+      if (chart.canvas.id !== 'wcRankChart') return;
+      const { ctx, chartArea } = chart;
+      const meta = chart.getDatasetMeta(0);
+      ctx.save();
+      ctx.font = 'bold 9.5px -apple-system,sans-serif';
+      ctx.textAlign = 'left';
+      const annotations = [null, null, null,
+        { line1: '↑ 9 places', line2: '+20%', color: C_S1 },
+        { line1: '↑ 14 places', line2: '+40%', color: C_S2 }
+      ];
+      meta.data.forEach((pt, i) => {
+        if (!annotations[i]) return;
+        const a = annotations[i];
+        const x = Math.min(pt.x + 10, chartArea.right - 60);
+        ctx.fillStyle = a.color;
+        ctx.fillText(a.line1, x, pt.y - 14);
+        ctx.fillText(a.line2, x, pt.y - 2);
+      });
+      ctx.restore();
+    }
+  };
+  new Chart(document.getElementById('wcRankChart'), {
+    type: 'line',
+    data: {
+      labels: wcYears,
+      datasets: [{
+        label: 'WC Standing Rank',
+        data: wcRanks,
+        borderColor: '#0052CC',
+        borderWidth: 2.5,
+        pointRadius: wcRanks.map((_, i) => i < 2 ? 5 : 8),
+        pointBackgroundColor: wcRankColors,
+        pointBorderColor: wcRankColors,
+        tension: 0.3,
+        fill: false
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 36, right: 10 } },
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          display: true,
+          color: (ctx) => wcRankColors[ctx.dataIndex].replace('cc','ff').replace('88','ff'),
+          font: { size: 11, weight: 'bold' },
+          formatter: v => v + 'th',
+          anchor: 'end', align: 'top', offset: 2
+        },
+        tooltip: { callbacks: { label: ctx => `Rank: ${ctx.raw}th` } }
+      },
+      scales: {
+        x: { ticks: { color: C_TEXT, font: { size: 10 } }, grid: { color: C_GRID } },
+        y: {
+          reverse: true, min: 1, max: 60,
+          ticks: { color: C_TEXT, callback: v => v + 'th' },
+          grid: { color: C_GRID }
+        }
+      }
+    },
+    plugins: [wcRankPctPlugin]
+  });
+
+  // ── World Cup Points (FIS official, 5 seasons) ────────────
+  const wcPts = [16, 21, 29, 68, 78];
+  const wcPtsColors = ['#C0560055','#C0560055', C_BEF+'cc', C_S1+'cc', C_S2+'cc'];
+  new Chart(document.getElementById('wcPointsChart'), {
+    type: 'bar',
+    data: {
+      labels: wcYears,
+      datasets: [{
+        label: 'WC Points',
+        data: wcPts,
+        backgroundColor: wcPtsColors,
+        borderRadius: 5
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 36 } },
+      plugins: {
+        legend: { display: false },
+        datalabels: {
+          display: true,
+          color: C_TEXT,
+          font: { size: 10, weight: 'bold' },
+          formatter: (v, ctx) => {
+            const pct = [null, null, null, '+134% vs 2023–24', '+169% vs 2023–24'];
+            const p = pct[ctx.dataIndex];
+            return p ? v + ' pts\n' + p : v + ' pts';
+          },
+          anchor: 'end', align: 'top', offset: 2,
+          textAlign: 'center'
+        },
+        tooltip: { callbacks: { label: ctx => `Points: ${ctx.raw}` } }
+      },
+      scales: {
+        x: { ticks: { color: C_TEXT, font: { size: 10 } }, grid: { display: false } },
+        y: { max: 110, ticks: { color: C_TEXT }, grid: { color: C_GRID } }
+      }
+    }
+  });
+
+  // ── Avg Qual Seed vs Avg Race Finish (moved to Charts tab) ──
+  new Chart(document.getElementById('ovQualRaceChart'), {
+    type: 'bar',
+    data: {
+      labels: ['2023–24 Pre-Work', '2024–25 Season 1', '2025–26 Season 2'],
+      datasets: [
+        {
+          label: 'Avg Qualification Seed',
+          data: [43.1, 26.9, 21.3],
+          backgroundColor: [C_BEF+'bb', C_S1+'bb', C_S2+'bb'],
+          borderRadius: 5
+        },
+        {
+          label: 'Avg Race Finish',
+          data: [40.9, 27.7, 23.0],
+          backgroundColor: [C_BEF+'33', C_S1+'33', C_S2+'33'],
+          borderColor:     [C_BEF+'bb', C_S1+'bb', C_S2+'bb'],
+          borderWidth: 1.5,
+          borderRadius: 5
+        }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: C_TEXT, font: { size: 11 }, boxWidth: 14 } },
+        datalabels: {
+          display: true,
+          color: ctx => ctx.datasetIndex === 0 ? '#fff' : C_TEXT,
+          font: { size: 10, weight: 'bold' },
+          formatter: v => v + 'th',
+          anchor: 'center', align: 'center'
+        },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw}th` } }
+      },
+      scales: {
+        x: { ticks: { color: C_TEXT, font: { size: 10 } }, grid: { display: false } },
+        y: {
+          reverse: true, min: 1, max: 55,
+          title: { display: true, text: 'Avg position (lower = better)', color: C_TEXT, font: { size: 9 } },
+          ticks: { color: C_TEXT, callback: v => v + 'th' },
+          grid: { color: C_GRID }
+        }
+      }
+    }
+  });
+
+  // ── Qual tier % bar ───────────────────────────────────────
+  new Chart(document.getElementById('qualTierChart'), {
+    type: 'bar',
+    data: {
+      labels: ['DNQ (>32nd)', 'Top-32', 'Top-20', 'Top-10'],
+      datasets: [
+        { label: '2023–24 Pre-Work',   data: [85.7, 14.3, 0, 0],       backgroundColor: C_BEF+'cc', borderRadius: 4 },
+        { label: '2024–25 Season 1', data: [33.3, 66.7, 22.2, 11.1], backgroundColor: C_S1+'cc', borderRadius: 4 },
+        { label: '2025–26 Season 2', data: [28.6, 71.4, 71.4, 14.3], backgroundColor: C_S2+'cc', borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 22 } },
+      plugins: {
+        legend: { labels: { color: C_TEXT, font: { size: 11 }, boxWidth: 16 } },
+        datalabels: {
+          display: ctx => ctx.dataset.data[ctx.dataIndex] > 0,
+          color: ctx => {
+            const v = ctx.dataset.data[ctx.dataIndex];
+            return v < 18 ? '#374151' : '#fff';
+          },
+          font: { size: 10, weight: 'bold' },
+          formatter: v => v + '%',
+          anchor: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'end' : 'center',
+          align: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'top' : 'center',
+          offset: 2,
+          clamp: false
+        }
+      },
+      scales: {
+        x: { ticks: { color: C_TEXT }, grid: { display: false } },
+        y: { max: 105, ticks: { color: C_TEXT, callback: v => v <= 100 ? v + '%' : '' }, grid: { color: C_GRID } }
+      }
+    }
+  });
+
+  // ── Race tier % bar ────────────────────────────────────────
+  new Chart(document.getElementById('tierChart'), {
+    type: 'bar',
+    data: {
+      labels: ['DNQ (>32nd)', 'Top-32', 'Top-20', 'Top-10'],
+      datasets: [
+        { label: '2023–24 Pre-Work',   data: [75, 25, 8.3, 0],    backgroundColor: C_BEF+'cc', borderRadius: 4 },
+        { label: '2024–25 Season 1', data: [36.4, 63.6, 18.2, 9.1], backgroundColor: C_S1+'cc', borderRadius: 4 },
+        { label: '2025–26 Season 2', data: [25, 75, 50, 12.5],  backgroundColor: C_S2+'cc', borderRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { top: 22 } },
+      plugins: {
+        legend: { labels: { color: C_TEXT, font: { size: 11 }, boxWidth: 16 } },
+        datalabels: {
+          display: ctx => ctx.dataset.data[ctx.dataIndex] > 0,
+          color: ctx => {
+            const v = ctx.dataset.data[ctx.dataIndex];
+            return v < 18 ? '#374151' : '#fff';
+          },
+          font: { size: 10, weight: 'bold' },
+          formatter: v => v + '%',
+          anchor: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'end' : 'center',
+          align: ctx => ctx.dataset.data[ctx.dataIndex] < 18 ? 'top' : 'center',
+          offset: 2,
+          clamp: false
+        }
+      },
+      scales: {
+        x: { ticks: { color: C_TEXT }, grid: { display: false } },
+        y: { max: 105, ticks: { color: C_TEXT, callback: v => v <= 100 ? v + '%' : '' }, grid: { color: C_GRID } }
+      }
+    }
+  });
+
+  // ── Race progression ──────────────────────────────────────
+  const maxLen = Math.max(races2324.length, races2425.length, races2526.length);
+  // Olympic point annotation plugin — labels R4 of S2 (index 3, value 26)
+  const olympicLabelPlugin = {
+    id: 'olympicLabel',
+    afterDraw(chart) {
+      const meta = chart.getDatasetMeta(2); // S2 dataset
+      if (!meta || !meta.data[3]) return;
+      const pt = meta.data[3];
+      const { ctx } = chart;
+      ctx.save();
+      ctx.font = 'bold 9px -apple-system,sans-serif';
+      ctx.fillStyle = '#00875A';
+      ctx.textAlign = 'center';
+      ctx.fillText('Olympic Debut', pt.x, pt.y - 18);
+      ctx.fillText('(10th Qual)', pt.x, pt.y - 8);
+      ctx.restore();
+    }
+  };
+  new Chart(document.getElementById('raceChart'), {
+    type: 'line',
+    data: {
+      labels: Array.from({length: maxLen}, (_, i) => `R${i+1}`),
+      datasets: [
+        { label: '2023–24 Pre-Work',   data: races2324, borderColor: C_BEF, borderDash: [6,4], borderWidth: 2, pointRadius: 4, pointBackgroundColor: C_BEF, tension: 0.3, fill: false },
+        { label: '2024–25 Season 1', data: races2425, borderColor: C_S1,  borderWidth: 2.5, pointRadius: 4, pointBackgroundColor: C_S1, tension: 0.3, fill: false },
+        { label: '2025–26 Season 2', data: races2526, borderColor: C_S2,  borderWidth: 3,   pointRadius: 5, pointBackgroundColor: C_S2, tension: 0.3, fill: false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: C_TEXT, font: { size: 11 }, boxWidth: 20 } },
+        ...noDL
+      },
+      scales: baseScales(true, 68)
+    },
+    plugins: [dnqPlugin, olympicLabelPlugin]
+  });
+
+  // ── Qualification line ────────────────────────────────────
+  const qMax = Math.max(quals2324.length, quals2425.length, quals2526.length);
+  new Chart(document.getElementById('qualChart'), {
+    type: 'line',
+    data: {
+      labels: Array.from({length: qMax}, (_, i) => `Q${i+1}`),
+      datasets: [
+        { label: '2023–24', data: quals2324, borderColor: C_BEF, borderDash: [5,4], borderWidth: 2, pointRadius: 4, pointBackgroundColor: C_BEF, tension: 0.3, fill: false },
+        { label: '2024–25', data: quals2425, borderColor: C_S1,  borderWidth: 2.5, pointRadius: 4, pointBackgroundColor: C_S1, tension: 0.3, fill: false },
+        { label: '2025–26', data: quals2526, borderColor: C_S2,  borderWidth: 3,   pointRadius: 5, pointBackgroundColor: C_S2, tension: 0.3, fill: false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: C_TEXT, font: { size: 11 }, boxWidth: 16 } },
+        ...noDL
+      },
+      scales: baseScales(true, 62)
+    },
+    plugins: [dnqPlugin]
+  });
+
+  // ── Within-season trend ───────────────────────────────────
+  new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: {
+      labels: Array.from({length: 9}, (_, i) => `Q${i+1}`),
+      datasets: [
+        { label: '2023–24 Trend', data: linReg(quals2324), borderColor: C_BEF, borderDash: [6,4], borderWidth: 2.5, pointRadius: 0, tension: 0 },
+        { label: '2024–25 Trend', data: linReg(quals2425), borderColor: C_S1,  borderWidth: 2.5, pointRadius: 0, tension: 0 },
+        { label: '2025–26 Trend', data: linReg(quals2526), borderColor: C_S2,  borderWidth: 3,   pointRadius: 0, tension: 0 },
+        { label: '2023–24 Actual', data: quals2324, borderColor: C_BEF+'55', borderDash:[3,3], borderWidth:1.5, pointRadius:3, pointBackgroundColor:C_BEF, tension:0.2, fill:false },
+        { label: '2024–25 Actual', data: quals2425, borderColor: C_S1+'55',  borderDash:[3,3], borderWidth:1.5, pointRadius:3, pointBackgroundColor:C_S1, tension:0.2, fill:false },
+        { label: '2025–26 Actual', data: quals2526, borderColor: C_S2+'55',  borderDash:[3,3], borderWidth:1.5, pointRadius:3, pointBackgroundColor:C_S2, tension:0.2, fill:false },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: C_TEXT, font: { size: 10 }, boxWidth: 14, filter: i => i.datasetIndex < 3 } },
+        ...noDL
+      },
+      scales: baseScales(true, 62)
+    },
+    plugins: [dnqPlugin]
+  });
+
+  // ── Pressure Index (Championship Cycles) ─────────────────
+  // 24-25: Europa [19,1]→10.0 (Reiteralm only; Puy St. Vincent removed), WC [43,28,21,37,40,43,28,21,11,23]→29.5, WCh [10]→10.0
+  // 25-26: WC [34,35,17,10,27,20,15]→22.6, Olympic indiv [26]→26.0
+  // Championship Peak: S1=WCh 10th, S2=Olympic 26th | Ghost=S2 Qual 10th
+  const pressureAnnotationPlugin = { id: 'pressureAnnotation', afterDatasetsDraw() {} };
+  new Chart(document.getElementById('pressureChart'), {
+    type: 'bar',
+    data: {
+      labels: ['Europa Cup\n(Development)', 'World Cup\n(Pro Circuit)', 'Championship Peak\n(WCh / Olympic)'],
+      datasets: [
+        {
+          label: '24–25 (WCh Cycle)',
+          data: [10.0, 29.5, 10.0],
+          backgroundColor: C_S1+'cc',
+          borderRadius: 5
+        },
+        {
+          label: '25–26 (Olympic Cycle)',
+          data: [null, 22.6, 26.0],
+          backgroundColor: C_S2+'cc',
+          borderRadius: 5
+        },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: C_TEXT, font: { size: 11 }, boxWidth: 16 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              if (ctx.raw == null) return '';
+              const notes = {
+                '24–25 (WCh Cycle)':   ['Reiteralm avg (19th, 1st)', 'WC avg across 10 starts', 'Engadin WCh — 10th'],
+                '25–26 (Olympic Cycle)':['—', 'WC avg across 7 starts', 'Milano-Cortina Olympic — 26th indiv (10th Qual)'],
+              };
+              const note = notes[ctx.dataset.label]?.[ctx.dataIndex] || '';
+              return `${ctx.raw}th avg${note ? ' · ' + note : ''}`;
+            }
+          }
+        },
+        datalabels: {
+          display: ctx => ctx.dataset.data[ctx.dataIndex] != null,
+          color: '#fff',
+          font: { size: 11, weight: 'bold' },
+          formatter: v => v + 'th',
+          anchor: 'center',
+          align: 'center'
+        }
+      },
+      scales: {
+        x: { ticks: { color: C_TEXT, font: { size: 10 } }, grid: { display: false } },
+        y: {
+          reverse: true,
+          min: 1, max: 40,
+          title: { display: true, text: 'Avg finish position (lower = better)', color: C_TEXT, font: { size: 10 } },
+          ticks: { color: C_TEXT, callback: v => v + 'th' },
+          grid: { color: C_GRID }
+        }
+      }
+    },
+    plugins: [pressureAnnotationPlugin]
+  });
+
+  // ── Venue map ─────────────────────────────────────────────
+  // Performance score = 66 - avg_position so longer bar = better (higher score = higher placement)
+  const venues = [
+    { name: 'Engadin',        s0: null,    s1: [10],     s2: null },
+    { name: 'Mt. St. Anne',   s0: [35,43], s1: [11,23],  s2: [15] },
+    { name: 'Reiteralm',      s0: null,    s1: [19,1],   s2: null },
+    { name: 'Erzurum',        s0: null,    s1: [40],     s2: [10,27] },
+    { name: 'Montafon',       s0: [37,46], s1: [21],     s2: [20] },
+    { name: 'Dongbei',        s0: null,    s1: null,     s2: [35,17] },
+    { name: 'Beidahu',        s0: null,    s1: [28,21],  s2: null },
+    { name: 'Livigno',        s0: null,    s1: null,     s2: [26] },
+    { name: 'Gudauri',        s0: [40,24], s1: [43,28],  s2: null },
+    { name: 'Cortina',        s0: [54],    s1: [37],     s2: null },
+    { name: 'Cervinia',       s0: null,    s1: [43],     s2: [34] },
+    { name: 'Sierra Nevada',  s0: [60,50], s1: null,     s2: null },
+  ];
+  const avg = arr => arr && arr.length ? Math.round(arr.reduce((a,b)=>a+b,0)/arr.length) : null;
+  const toScore = arr => { const a = avg(arr); return a != null ? 66 - a : null; };
+  const toPos   = score => score != null ? 66 - score : null;
+  new Chart(document.getElementById('venueChart'), {
+    type: 'bar',
+    data: {
+      labels: venues.map(v => v.name),
+      datasets: [
+        { label: '2023–24 Pre-Work',   data: venues.map(v => toScore(v.s0)), backgroundColor: C_BEF+'99', borderRadius: 3 },
+        { label: '2024–25 Season 1', data: venues.map(v => toScore(v.s1)), backgroundColor: C_S1+'99', borderRadius: 3 },
+        { label: '2025–26 Season 2', data: venues.map(v => toScore(v.s2)), backgroundColor: C_S2+'99', borderRadius: 3 },
+      ]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: C_TEXT, font: { size: 11 }, boxWidth: 14 } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const pos = toPos(ctx.raw);
+              return pos != null ? `Avg: ${pos}th place` : 'No data';
+            }
+          }
+        },
+        datalabels: {
+          display: ctx => ctx.dataset.data[ctx.dataIndex] != null,
+          color: C_TEXT,
+          font: { size: 10, weight: 'bold' },
+          formatter: v => toPos(v) + 'th',
+          anchor: 'end',
+          align: 'right',
+          offset: 4,
+          clamp: false
+        }
+      },
+      scales: {
+        x: {
+          min: 0, max: 72,
+          title: { display: true, text: 'Performance Score (longer = better placement)', color: C_TEXT, font: { size: 10 } },
+          ticks: { color: C_TEXT, callback: v => v === 0 ? '' : (66 - v) + 'th' },
+          grid: { color: C_GRID }
+        },
+        y: { ticks: { color: C_TEXT, font: { size: 10 } }, grid: { display: false } }
+      },
+      layout: { padding: { right: 36 } }
+    }
+  });
+
+  // ── Shared-venue dumbbell (qual, S1 vs S2) ───────────────
+  const sharedVenues   = ['Cervinia', 'Erzurum', 'Montafon', 'Mt. St. Anne'];
+  const s1QualShared   = [43, 40, 25, 20];
+  const s2QualShared   = [34, 17, 19, 20];
+  const dumbbellPlugin = {
+    id: 'dumbbellLines',
+    afterDatasetsDraw(chart) {
+      if (chart.canvas.id !== 'dumbbellChart') return;
+      const { ctx, scales } = chart;
+      const m0 = chart.getDatasetMeta(0);
+      const m1 = chart.getDatasetMeta(1);
+      ctx.save();
+      m0.data.forEach((pt0, i) => {
+        const pt1 = m1.data[i];
+        if (!pt0 || !pt1) return;
+        const improvement = s1QualShared[i] - s2QualShared[i];
+        ctx.strokeStyle = improvement > 0 ? C_S2 : (improvement < 0 ? C_BEF : C_TEXT);
+        ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(pt0.x, pt0.y); ctx.lineTo(pt1.x, pt1.y); ctx.stroke();
+        if (improvement !== 0) {
+          const midY = (pt0.y + pt1.y) / 2;
+          ctx.font = 'bold 9.5px -apple-system,sans-serif';
+          ctx.fillStyle = improvement > 0 ? C_S2 : C_BEF;
+          ctx.textAlign = 'left';
+          ctx.fillText('+' + Math.abs(improvement) + ' places', pt0.x + 16, midY);
+        }
+      });
+      ctx.restore();
+    }
+  };
+  new Chart(document.getElementById('dumbbellChart'), {
+    type: 'scatter',
+    data: {
+      datasets: [
+        { label: '2024–25 Season 1', data: sharedVenues.map((_, i) => ({ x: i, y: s1QualShared[i] })), backgroundColor: C_S1, pointRadius: 9, pointHoverRadius: 11 },
+        { label: '2025–26 Season 2', data: sharedVenues.map((_, i) => ({ x: i, y: s2QualShared[i] })), backgroundColor: C_S2, pointRadius: 9, pointHoverRadius: 11 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      layout: { padding: { right: window.innerWidth <= 768 ? 40 : 80 } },
+      plugins: {
+        legend: { labels: { color: C_TEXT, font: { size: 11 }, boxWidth: 14 } },
+        ...noDL,
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw.y}th` } }
+      },
+      scales: {
+        x: { min: -0.5, max: sharedVenues.length - 0.5, ticks: { stepSize: 1, includeBounds: false, color: C_TEXT, font: { size: 11 }, callback: (v) => sharedVenues[v] || '' }, grid: { display: false } },
+        y: { reverse: true, min: 1, max: 55, ticks: { color: C_TEXT, callback: v => v + 'th' }, grid: { color: C_GRID } }
+      }
+    },
+    plugins: [dumbbellPlugin, dnqPlugin]
+  });
+
+
+  // ── Distribution scatter ──────────────────────────────────
+  const mkScatter = (rData, qData, xi) =>
+    [...rData.map(y => ({ x: xi + (Math.random()*.28-.14), y })),
+     ...qData.map(y => ({ x: xi + (Math.random()*.28-.14), y }))];
+
+  new Chart(document.getElementById('distChart'), {
+    type: 'scatter',
+    data: {
+      datasets: [
+        { label: '2023–24', data: mkScatter(races2324, quals2324, 1), backgroundColor: C_BEF+'aa', pointRadius: 6 },
+        { label: '2024–25', data: mkScatter(races2425, quals2425, 2), backgroundColor: C_S1+'aa', pointRadius: 6 },
+        { label: '2025–26', data: mkScatter(races2526, quals2526, 3), backgroundColor: C_S2+'aa', pointRadius: 6 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: C_TEXT, font: { size: 11 }, boxWidth: 14 } },
+        ...noDL
+      },
+      scales: {
+        x: { min: 0.5, max: 3.5, ticks: { color: C_TEXT, font:{size:11}, callback: (_,i) => ['','2023–24','2024–25','2025–26'][i]||'' }, grid: { display: false } },
+        y: { reverse: true, min: 1, max: 65, ticks: { color: C_TEXT, callback: v => v+'th' }, grid: { color: C_GRID } }
+      }
+    },
+    plugins: [dnqPlugin]
+  });
+}
+</script>
+</body>
+</html>
