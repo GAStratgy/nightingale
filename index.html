@@ -1710,17 +1710,19 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: isMobileOv ? 4 : 20 } },
+      layout: { padding: { top: isMobileOv ? 38 : 20 } },
       plugins: {
         legend: { labels: { color: '#888890', font: { size: 10 }, boxWidth: 14 } },
         datalabels: {
-          display: ctx => ctx.dataset.data[ctx.dataIndex] >= (isMobileOv ? 20 : 1),
-          color: '#fff',
-          font: { size: isMobileOv ? 8 : 9, weight: 'bold' },
+          display: ctx => ctx.dataset.data[ctx.dataIndex] > 0,
+          color: '#374151',
+          font: { size: isMobileOv ? 7 : 9, weight: 'bold' },
+          rotation: isMobileOv ? -90 : 0,
           formatter: v => v + '%',
-          anchor: 'center', align: 'center',
-          clamp: true
-        }
+          anchor: 'end', align: 'top', offset: 2,
+          clamp: false
+        },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw}%` } }
       },
       scales: {
         x: { ticks: { color: '#888890', font: { size: 10 } }, grid: { display: false } },
@@ -1742,17 +1744,19 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: isMobileOv ? 4 : 20 } },
+      layout: { padding: { top: isMobileOv ? 38 : 20 } },
       plugins: {
         legend: { labels: { color: '#888890', font: { size: 10 }, boxWidth: 14 } },
         datalabels: {
-          display: ctx => ctx.dataset.data[ctx.dataIndex] >= (isMobileOv ? 20 : 1),
-          color: '#fff',
-          font: { size: isMobileOv ? 8 : 9, weight: 'bold' },
+          display: ctx => ctx.dataset.data[ctx.dataIndex] > 0,
+          color: '#374151',
+          font: { size: isMobileOv ? 7 : 9, weight: 'bold' },
+          rotation: isMobileOv ? -90 : 0,
           formatter: v => v + '%',
-          anchor: 'center', align: 'center',
-          clamp: true
-        }
+          anchor: 'end', align: 'top', offset: 2,
+          clamp: false
+        },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw}%` } }
       },
       scales: {
         x: { ticks: { color: '#888890', font: { size: 10 } }, grid: { display: false } },
@@ -1954,27 +1958,35 @@ function buildCharts() {
   // ── World Cup Standing Rank (FIS official, 5 seasons) ─────
   const wcYears = ['2021–22', '2022–23', '2023–24', '2024–25', '2025–26'];
   const wcRanks = [49, 45, 44, 35, 21];
-  const wcRankColors = ['#C0560088','#C0560088', C_BEF+'cc', C_S1+'cc', C_S2+'cc'];
-  const wcRankPctPlugin = {
-    id: 'wcRankPct',
+  const wcRankColors   = ['#C0560088','#C0560088', C_BEF+'cc', C_S1+'cc', C_S2+'cc'];
+  const wcRankColorsSolid = ['#C05600','#C05600', C_BEF, C_S1, C_S2];
+  const wcAnnotations  = [null, null, null,
+    { line1: '↑ 9 places', line2: '+20%', color: C_S1 },
+    { line1: '↑ 14 places', line2: '+40%', color: C_S2 }
+  ];
+  // Single canvas-space plugin — pt.y is always screen pixels, axis reversal irrelevant
+  const wcLabelsPlugin = {
+    id: 'wcLabels',
     afterDatasetsDraw(chart) {
       if (chart.canvas.id !== 'wcRankChart') return;
-      const { ctx, chartArea } = chart;
+      const { ctx } = chart;
       const meta = chart.getDatasetMeta(0);
       ctx.save();
-      ctx.font = 'bold 9.5px -apple-system,sans-serif';
-      ctx.textAlign = 'left';
-      const annotations = [null, null, null,
-        { line1: '↑ 9 places', line2: '+20%', color: C_S1 },
-        { line1: '↑ 14 places', line2: '+40%', color: C_S2 }
-      ];
+      ctx.textBaseline = 'top';
       meta.data.forEach((pt, i) => {
-        if (!annotations[i]) return;
-        const a = annotations[i];
-        const x = Math.min(pt.x + 10, chartArea.right - 60);
-        ctx.fillStyle = a.color;
-        ctx.fillText(a.line1, x, pt.y - 14);
-        ctx.fillText(a.line2, x, pt.y - 2);
+        // Rank number directly below the dot
+        ctx.textAlign = 'center';
+        ctx.font = 'bold 11px -apple-system,sans-serif';
+        ctx.fillStyle = wcRankColorsSolid[i];
+        ctx.fillText(wcRanks[i] + 'th', pt.x, pt.y + 10);
+        // Arrow + % annotation below the rank number (only for S1 and S2)
+        const a = wcAnnotations[i];
+        if (a) {
+          ctx.font = 'bold 9px -apple-system,sans-serif';
+          ctx.fillStyle = a.color;
+          ctx.fillText(a.line1, pt.x, pt.y + 24);
+          ctx.fillText(a.line2, pt.x, pt.y + 36);
+        }
       });
       ctx.restore();
     }
@@ -1997,16 +2009,10 @@ function buildCharts() {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: 36, right: 10 } },
+      layout: { padding: { top: 16, right: 10, bottom: 52 } },
       plugins: {
         legend: { display: false },
-        datalabels: {
-          display: true,
-          color: (ctx) => wcRankColors[ctx.dataIndex].replace('cc','ff').replace('88','ff'),
-          font: { size: 11, weight: 'bold' },
-          formatter: v => v + 'th',
-          anchor: 'end', align: 'top', offset: 2
-        },
+        datalabels: { display: false },
         tooltip: { callbacks: { label: ctx => `Rank: ${ctx.raw}th` } }
       },
       scales: {
@@ -2018,7 +2024,7 @@ function buildCharts() {
         }
       }
     },
-    plugins: [wcRankPctPlugin]
+    plugins: [wcLabelsPlugin]
   });
 
   // ── World Cup Points (FIS official, 5 seasons) ────────────
@@ -2123,17 +2129,19 @@ function buildCharts() {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: isMobile ? 4 : 22 } },
+      layout: { padding: { top: isMobile ? 38 : 22 } },
       plugins: {
         legend: { labels: { color: C_TEXT, font: { size: 11 }, boxWidth: 16 } },
         datalabels: {
-          display: ctx => ctx.dataset.data[ctx.dataIndex] >= (isMobile ? 20 : 1),
-          color: '#fff',
-          font: { size: isMobile ? 8 : 10, weight: 'bold' },
+          display: ctx => ctx.dataset.data[ctx.dataIndex] > 0,
+          color: C_TEXT,
+          font: { size: isMobile ? 7 : 10, weight: 'bold' },
+          rotation: isMobile ? -90 : 0,
           formatter: v => v + '%',
-          anchor: 'center', align: 'center',
-          clamp: true
-        }
+          anchor: 'end', align: 'top', offset: 2,
+          clamp: false
+        },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw}%` } }
       },
       scales: {
         x: { ticks: { color: C_TEXT }, grid: { display: false } },
@@ -2155,17 +2163,19 @@ function buildCharts() {
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      layout: { padding: { top: isMobile ? 4 : 22 } },
+      layout: { padding: { top: isMobile ? 38 : 22 } },
       plugins: {
         legend: { labels: { color: C_TEXT, font: { size: 11 }, boxWidth: 16 } },
         datalabels: {
-          display: ctx => ctx.dataset.data[ctx.dataIndex] >= (isMobile ? 20 : 1),
-          color: '#fff',
-          font: { size: isMobile ? 8 : 10, weight: 'bold' },
+          display: ctx => ctx.dataset.data[ctx.dataIndex] > 0,
+          color: C_TEXT,
+          font: { size: isMobile ? 7 : 10, weight: 'bold' },
+          rotation: isMobile ? -90 : 0,
           formatter: v => v + '%',
-          anchor: 'center', align: 'center',
-          clamp: true
-        }
+          anchor: 'end', align: 'top', offset: 2,
+          clamp: false
+        },
+        tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.raw}%` } }
       },
       scales: {
         x: { ticks: { color: C_TEXT }, grid: { display: false } },
@@ -2371,13 +2381,13 @@ function buildCharts() {
         },
         datalabels: {
           display: ctx => ctx.dataset.data[ctx.dataIndex] != null,
-          color: isMobile ? '#fff' : C_TEXT,
+          color: C_TEXT,
           font: { size: isMobile ? 8 : 10, weight: 'bold' },
           formatter: v => toPos(v) + 'th',
-          anchor: isMobile ? 'center' : 'end',
-          align: isMobile ? 'center' : 'right',
-          offset: isMobile ? 0 : 4,
-          clamp: true
+          anchor: 'end',
+          align: 'right',
+          offset: 4,
+          clamp: false
         }
       },
       scales: {
@@ -2389,7 +2399,7 @@ function buildCharts() {
         },
         y: { ticks: { color: C_TEXT, font: { size: 10 } }, grid: { display: false } }
       },
-      layout: { padding: { right: isMobile ? 4 : 36 } }
+      layout: { padding: { right: 40 } }
     }
   });
 
